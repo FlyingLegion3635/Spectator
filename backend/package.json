@@ -1,0 +1,32 @@
+{
+  "name": "spectator-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js backend API for the Spectator Flutter app",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "check": "find src scripts -name '*.js' -type f -print0 | xargs -0 -n1 node --check",
+    "seed": "node scripts/seedDemoData.js"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^10.0.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.0.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

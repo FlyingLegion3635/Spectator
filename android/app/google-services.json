@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "538604307894",
+    "project_id": "spectator-aca8c",
+    "storage_bucket": "spectator-aca8c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:538604307894:android:96aa37eb52c8e351de2d17",
+        "android_client_info": {
+          "package_name": "com.example.spectator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7Lw0WDHqloq2Kcl0EaiJaIxzfVQq17ng"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
