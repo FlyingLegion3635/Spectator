@@ -1,4 +1,6 @@
 const { asyncHandler } = require('../utils/asyncHandler');
+const { db } = require('../config/firebase');
+const { COLLECTIONS } = require('../constants/collections');
 const {
   createMatchEntry,
   listMatchEntries,
@@ -8,6 +10,55 @@ const {
   restoreMatchEntryVersion,
   getTeamSummary,
 } = require('../services/match.service');
+
+async function filterVisibleEntries(entries, requesterTeamNumber) {
+  const requesterTeam = String(requesterTeamNumber || '').trim();
+  const uniqueTeams = [
+    ...new Set(
+      entries
+        .map((entry) => String(entry.teamNumber || '').trim())
+        .filter((teamNumber) => teamNumber && teamNumber !== requesterTeam),
+    ),
+  ];
+
+  if (uniqueTeams.length === 0) {
+    return entries;
+  }
+
+  const snapshots = await Promise.all(
+    uniqueTeams.map((teamNumber) =>
+      db.collection(COLLECTIONS.ABOUT_PROFILES).doc(teamNumber).get(),
+    ),
+  );
+
+  const publicTeams = new Set();
+  snapshots.forEach((snap) => {
+    if (!snap.exists) {
+      return;
+    }
+
+    const data = snap.data() || {};
+    if (String(data.dataVisibility || '') === 'public') {
+      const teamNumber = String(data.teamNumber || snap.id).trim();
+      if (teamNumber) {
+        publicTeams.add(teamNumber);
+      }
+    }
+  });
+
+  return entries.filter((entry) => {
+    const teamNumber = String(entry.teamNumber || '').trim();
+    if (!teamNumber) {
+      return false;
+    }
+
+    if (requesterTeam && teamNumber === requesterTeam) {
+      return true;
+    }
+
+    return publicTeams.has(teamNumber);
+  });
+}
 
 const postMatchEntry = asyncHandler(async (req, res) => {
   const entry = await createMatchEntry(req.body, req.user);
@@ -19,18 +70,20 @@ const getMatchEntries = asyncHandler(async (req, res) => {
   const hasSearchFilter = Boolean(
     String(query.teamNumber || '').trim() || String(query.matchNumber || '').trim(),
   );
+  const includeAllTeams = String(query.scope || 'team') === 'all';
 
   if (!req.user && !hasSearchFilter) {
     res.json({ success: true, entries: [] });
     return;
   }
 
-  if (req.user && !String(query.teamNumber || '').trim()) {
+  if (req.user && !includeAllTeams) {
     query.teamNumber = String(req.user.teamNumber || '').trim();
   }
 
   const entries = await listMatchEntries(query);
-  res.json({ success: true, entries });
+  const visibleEntries = await filterVisibleEntries(entries, req.user?.teamNumber);
+  res.json({ success: true, entries: visibleEntries });
 });
 
 const getMatchEntry = asyncHandler(async (req, res) => {

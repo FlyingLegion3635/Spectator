@@ -49,6 +49,7 @@ const listPitEntriesQuerySchema = z.object({
   datasheetId: z.string().trim().optional(),
   teamNumber: z.string().trim().optional(),
   teamName: z.string().trim().optional(),
+  scope: z.enum(['team', 'all']).optional().default('team'),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 

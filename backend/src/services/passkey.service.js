@@ -103,7 +103,7 @@ async function getRegistrationOptionsForUser(userId) {
     rpName: env.PASSKEY_RP_NAME,
     rpID: env.PASSKEY_RP_ID,
     userName: user.username,
-    userID: user.id,
+    userID: Buffer.from(String(user.id || ''), 'utf8'),
     timeout: 60000,
     attestationType: 'none',
     excludeCredentials: passkeys.map((passkey) => ({

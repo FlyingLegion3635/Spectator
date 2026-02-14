@@ -1,9 +1,9 @@
 import 'package:convex_bottom_bar/convex_bottom_bar.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spectator/something.dart';
 import 'package:spectator/screens/account/account.dart';
+import 'package:spectator/screens/about_app/about_app.dart';
 import 'package:spectator/screens/home/color.dart';
 import 'package:spectator/screens/home/userScreens/About.dart';
 import 'package:spectator/screens/home/userScreens/Data.dart';
@@ -11,16 +11,7 @@ import 'package:spectator/screens/home/userScreens/MainScouting.dart';
 import 'package:spectator/screens/home/userScreens/PitScoutingFolder/PitScouting.dart';
 import 'package:spectator/screens/home/userScreens/Students.dart';
 import 'package:spectator/screens/login/login.dart';
-
-class SettingsModel with ChangeNotifier {
-  double _fontSize = 14.0;
-  double get fontSize => _fontSize;
-
-  void setFontSize(double newSize) {
-    _fontSize = newSize;
-    notifyListeners();
-  }
-}
+import 'package:spectator/theme/appearance.dart';
 
 class _TabConfig {
   const _TabConfig(this.title, this.icon, this.page);
@@ -43,6 +34,15 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
   final Functions backend = Functions();
 
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<SettingsModel>().syncAuthThemeState();
+    });
+  }
 
   List<_TabConfig> _visibleTabs(bool isAuthenticated) {
     if (!isAuthenticated) {
@@ -73,6 +73,11 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       _currentIndex = 0;
     }
     final currentTitle = tabs[_currentIndex].title;
+    final onPrimary =
+        ThemeData.estimateBrightnessForColor(colors.mainColors[0]) ==
+            Brightness.dark
+        ? Colors.white
+        : const Color(0xFF0F172A);
 
     return DefaultTabController(
       length: tabs.length,
@@ -81,15 +86,14 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
         backgroundColor: colors.baseColors[4],
         appBar: AppBar(
           backgroundColor: colors.mainColors[0],
+          iconTheme: IconThemeData(color: onPrimary),
           title: Text(
             'Spectator $currentTitle',
             style: TextStyle(
-              fontSize: 24,
-              color: colors.accentColors[0],
-              fontFamily: 'Monospace',
-              fontStyle: FontStyle.normal,
-              fontFeatures: const [FontFeature.enable('smcp')],
-              letterSpacing: 10.0,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: onPrimary,
+              letterSpacing: 0.4,
             ),
           ),
           centerTitle: true,
@@ -103,32 +107,75 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                 decoration: BoxDecoration(color: colors.mainColors[0]),
                 child: Text(
                   'Spectator Menu',
-                  style: TextStyle(color: colors.accentColors[0], fontSize: 24),
+                  style: TextStyle(color: onPrimary, fontSize: 24),
                 ),
               ),
               ListTile(
-                leading: Icon(Icons.text_fields, color: colors.accentColors[0]),
+                leading: Icon(Icons.text_fields, color: colors.baseColors[0]),
                 title: Text(
                   'Text Size',
                   style: TextStyle(
-                    color: colors.accentColors[0],
+                    color: colors.baseColors[0],
                     fontSize: usedSettings.fontSize,
                   ),
                 ),
                 onTap: () {
-                  Navigator.pop(context);
                   settings.setFontSize(settings.fontSize == 14.0 ? 17.0 : 14.0);
                 },
               ),
               ListTile(
                 leading: Icon(
+                  settings.themeMode == ThemeMode.dark
+                      ? Icons.dark_mode
+                      : settings.themeMode == ThemeMode.light
+                      ? Icons.light_mode
+                      : Icons.brightness_6,
+                  color: colors.baseColors[0],
+                ),
+                title: Text(
+                  'Theme: ${settings.themeModeLabel}',
+                  style: TextStyle(
+                    color: colors.baseColors[0],
+                    fontSize: usedSettings.fontSize,
+                  ),
+                ),
+                subtitle: Text(
+                  'Tap to cycle System, Light, Dark',
+                  style: TextStyle(color: colors.baseColors[1]),
+                ),
+                onTap: () {
+                  settings.cycleThemeMode();
+                },
+              ),
+              SwitchListTile(
+                activeThumbColor: colors.accentColors[0],
+                title: Text(
+                  'Use Personal Colors',
+                  style: TextStyle(
+                    color: colors.baseColors[0],
+                    fontSize: usedSettings.fontSize,
+                  ),
+                ),
+                subtitle: Text(
+                  isAuthenticated
+                      ? 'Overrides team colors when your personal colors are set.'
+                      : 'Set your own colors after login in Account.',
+                  style: TextStyle(color: colors.baseColors[1]),
+                ),
+                value: settings.preferPersonalColors,
+                onChanged: isAuthenticated
+                    ? (value) => settings.setPreferPersonalColors(value)
+                    : null,
+              ),
+              ListTile(
+                leading: Icon(
                   isAuthenticated ? Icons.account_circle : Icons.login,
-                  color: colors.accentColors[0],
+                  color: colors.baseColors[0],
                 ),
                 title: Text(
                   isAuthenticated ? 'Account' : 'Login',
                   style: TextStyle(
-                    color: colors.accentColors[0],
+                    color: colors.baseColors[0],
                     fontSize: usedSettings.fontSize,
                   ),
                 ),
@@ -150,39 +197,44 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                     );
                   }
                   if (!mounted) return;
+                  await settings.syncAuthThemeState();
                   setState(() {});
                 },
               ),
-              if (isAuthenticated && backend.passkeysEnabled && kIsWeb)
-                ListTile(
-                  leading: Icon(Icons.password, color: colors.accentColors[0]),
-                  title: Text(
-                    'Register Passkey',
-                    style: TextStyle(
-                      color: colors.accentColors[0],
-                      fontSize: usedSettings.fontSize,
-                    ),
+              const Divider(height: 18),
+              ListTile(
+                leading: Icon(Icons.info_outline, color: colors.baseColors[0]),
+                title: Text(
+                  'About App',
+                  style: TextStyle(
+                    color: colors.baseColors[0],
+                    fontSize: usedSettings.fontSize,
                   ),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await backend.registerPasskey(context);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
                 ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AboutAppPage(),
+                    ),
+                  );
+                },
+              ),
               if (isAuthenticated)
                 ListTile(
-                  leading: Icon(Icons.logout, color: colors.accentColors[0]),
+                  leading: Icon(Icons.logout, color: colors.baseColors[0]),
                   title: Text(
                     'Sign Out',
                     style: TextStyle(
-                      color: colors.accentColors[0],
+                      color: colors.baseColors[0],
                       fontSize: usedSettings.fontSize,
                     ),
                   ),
                   onTap: () {
                     Navigator.pop(context);
                     backend.signOut();
+                    settings.handleSignedOut();
                     setState(() {
                       _currentIndex = 0;
                     });
@@ -194,8 +246,8 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
         body: tabs[_currentIndex].page,
         bottomNavigationBar: ConvexAppBar(
           backgroundColor: colors.mainColors[0],
-          color: colors.accentColors[0],
-          activeColor: colors.accentColors[0],
+          color: onPrimary.withValues(alpha: 0.75),
+          activeColor: onPrimary,
           style: _tabStyle,
           items: <TabItem>[
             for (final tab in tabs) TabItem(icon: tab.icon, title: tab.title),

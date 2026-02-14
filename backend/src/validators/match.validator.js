@@ -82,6 +82,7 @@ const listMatchEntriesQuerySchema = z.object({
   datasheetId: z.string().trim().optional(),
   teamNumber: z.string().trim().optional(),
   matchNumber: z.string().trim().optional(),
+  scope: z.enum(['team', 'all']).optional().default('team'),
   limit: z.coerce.number().int().min(1).max(150).optional().default(50),
 });
 

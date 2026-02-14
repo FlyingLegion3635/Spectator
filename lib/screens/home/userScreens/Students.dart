@@ -113,7 +113,7 @@ class _StudentsState extends State<Students> {
             return AlertDialog(
               title: const Text('Student Invite Created'),
               content: SelectableText(
-                'Invite code for ${invite['studentName']}:\\n\\n${invite['inviteCode']}\\n\\nShare this once with the student.',
+                'Invite code for ${invite['studentName']}:\n\n${invite['inviteCode']}\n\nShare this once with the student.',
               ),
               actions: [
                 TextButton(
@@ -259,12 +259,20 @@ class _StudentsState extends State<Students> {
                   final student = backend.studentsData[index];
                   final studentId = '${student['id'] ?? ''}';
                   final role = '${student['role'] ?? 'scouter'}';
+                  final cardColor =
+                      Theme.of(context).cardTheme.color ?? colors.mainColors[2];
+                  final onCard =
+                      ThemeData.estimateBrightnessForColor(cardColor) ==
+                          Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF111827);
+                  final onCardMuted = onCard.withValues(alpha: 0.75);
                   final tasks = (student['tasks'] as List<dynamic>? ?? [])
                       .whereType<Map<String, dynamic>>()
                       .toList();
 
                   return Card(
-                    color: colors.mainColors[2],
+                    color: cardColor,
                     margin: EdgeInsets.only(bottom: measurements.mediumPadding),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
@@ -273,50 +281,71 @@ class _StudentsState extends State<Students> {
                       title: Text(
                         '${student['name']} ($role)',
                         style: TextStyle(
-                          color: colors.baseColors[0],
+                          color: onCard,
                           fontSize: backend.appSettings[0] + 2,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       subtitle: Text(
                         'Tasks: ${tasks.length} | Status: ${student['status'] ?? 'active'}',
-                        style: TextStyle(color: colors.baseColors[1]),
+                        style: TextStyle(color: onCardMuted),
                       ),
+                      iconColor: onCard,
+                      collapsedIconColor: onCardMuted,
+                      textColor: onCard,
+                      collapsedTextColor: onCard,
                       children: [
                         if ('${student['inviteCodeLast6'] ?? ''}'.isNotEmpty &&
                             '${student['status'] ?? ''}' == 'invited')
                           ListTile(
                             title: Text(
                               'Invite Suffix: ${student['inviteCodeLast6']}',
+                              style: TextStyle(color: onCard),
                             ),
-                            subtitle: const Text(
+                            subtitle: Text(
                               'Student must use the full 64-char invite code to sign up.',
+                              style: TextStyle(color: onCardMuted),
                             ),
                           ),
                         if (backend.canAssignStudentTasks)
-                          ButtonBar(
+                          OverflowBar(
                             alignment: MainAxisAlignment.start,
                             children: [
                               TextButton.icon(
                                 onPressed: () => _assignTask(studentId),
                                 icon: const Icon(Icons.playlist_add),
                                 label: const Text('Assign Task'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: onCard,
+                                ),
                               ),
                               if (backend.canInviteStudents)
                                 TextButton.icon(
                                   onPressed: () => _removeStudent(studentId),
                                   icon: const Icon(Icons.delete_forever),
                                   label: const Text('Remove'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: onCard,
+                                  ),
                                 ),
                             ],
                           ),
                         if (tasks.isEmpty)
-                          const ListTile(title: Text('No tasks assigned yet.')),
+                          ListTile(
+                            title: Text(
+                              'No tasks assigned yet.',
+                              style: TextStyle(color: onCard),
+                            ),
+                          ),
                         for (final task in tasks)
                           ListTile(
-                            title: Text('${task['title'] ?? ''}'),
+                            title: Text(
+                              '${task['title'] ?? ''}',
+                              style: TextStyle(color: onCard),
+                            ),
                             subtitle: Text(
                               '${task['description'] ?? ''}\nStatus: ${task['status'] ?? 'todo'}',
+                              style: TextStyle(color: onCardMuted),
                             ),
                             isThreeLine: true,
                             trailing: backend.canMarkStudentTasks

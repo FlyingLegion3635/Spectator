@@ -54,7 +54,7 @@ class _LoginPageState extends State<LoginPage> {
                       style: TextStyle(
                         fontSize: 40,
                         fontWeight: FontWeight.bold,
-                        color: colors.baseColors[0],
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     SizedBox(height: measurements.largePadding),
@@ -223,7 +223,7 @@ class _LoginPageState extends State<LoginPage> {
                           isLogin
                               ? 'New here? Sign Up'
                               : 'Have an account? Login',
-                          style: TextStyle(color: colors.baseColors[1]),
+                          style: TextStyle(color: colors.accentColors[0]),
                         ),
                       )
                     else
@@ -232,7 +232,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: Text(
                           'Signup is disabled by the server.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.baseColors[1]),
+                          style: TextStyle(color: colors.baseColors[2]),
                         ),
                       ),
                   ],

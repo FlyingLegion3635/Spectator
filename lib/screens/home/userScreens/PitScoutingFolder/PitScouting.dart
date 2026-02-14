@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:spectator/something.dart';
@@ -25,11 +25,14 @@ class _PitScoutingState extends State<PitScouting> {
   final Map<String, dynamic> _customValues = {};
 
   bool _templateLoading = true;
+  bool _syncingOffline = false;
+  int _offlinePendingCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadTemplate();
+    _refreshOfflineCount();
   }
 
   @override
@@ -75,74 +78,278 @@ class _PitScoutingState extends State<PitScouting> {
     }
   }
 
-  Future<void> _openTemplateEditor() async {
-    final initialFields = backend.pitTemplateFields.isEmpty
-        ? [
-            {
-              'key': 'canClimb',
-              'label': 'Can Climb',
-              'type': 'checkbox',
-              'required': false,
-            },
-            {
-              'key': 'driveTrainType',
-              'label': 'Drive Train Type',
-              'type': 'select',
-              'options': ['Tank', 'Swerve', 'Mecanum', 'Other'],
-              'required': false,
-            },
-          ]
-        : backend.pitTemplateFields;
+  Future<void> _refreshOfflineCount() async {
+    final count = await backend.getOfflinePitQueueCount();
+    if (!mounted) return;
+    setState(() {
+      _offlinePendingCount = count;
+    });
+  }
 
-    final controller = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert(initialFields),
-    );
+  Future<void> _openTemplateEditor() async {
+    final editableFields =
+        (backend.pitTemplateFields.isEmpty
+                ? [
+                    {
+                      'key': 'canClimb',
+                      'label': 'Can Climb',
+                      'type': 'checkbox',
+                      'required': false,
+                    },
+                    {
+                      'key': 'driveTrainType',
+                      'label': 'Drive Train Type',
+                      'type': 'select',
+                      'options': ['Tank', 'Swerve', 'Mecanum', 'Other'],
+                      'required': false,
+                    },
+                  ]
+                : backend.pitTemplateFields)
+            .map((entry) => Map<String, dynamic>.from(entry))
+            .toList();
+
+    void addField(String type) {
+      final baseLabel = type == 'checkbox'
+          ? 'New Checkbox'
+          : type == 'select'
+          ? 'New Select'
+          : 'New Text Field';
+      editableFields.add({
+        'key': '',
+        'label': baseLabel,
+        'type': type,
+        'options': type == 'select' ? ['Option A', 'Option B'] : [],
+        'required': false,
+      });
+    }
 
     final save = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Pit Template'),
-          content: SizedBox(
-            width: 560,
-            child: TextField(
-              controller: controller,
-              maxLines: 18,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Paste JSON array of fields',
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Pit Template'),
+              content: SizedBox(
+                width: 760,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => addField('text')),
+                          icon: const Icon(Icons.text_fields),
+                          label: const Text('Add Text'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => addField('checkbox')),
+                          icon: const Icon(Icons.check_box_outlined),
+                          label: const Text('Add Checkbox'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => addField('select')),
+                          icon: const Icon(
+                            Icons.arrow_drop_down_circle_outlined,
+                          ),
+                          label: const Text('Add Select'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 430,
+                      child: ListView.builder(
+                        itemCount: editableFields.length,
+                        itemBuilder: (context, index) {
+                          final field = editableFields[index];
+                          final type = '${field['type'] ?? 'text'}';
+                          final options =
+                              (field['options'] as List<dynamic>? ?? [])
+                                  .map((entry) => '$entry')
+                                  .where((entry) => entry.isNotEmpty)
+                                  .toList();
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10.0),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue:
+                                              '${field['label'] ?? ''}',
+                                          decoration: const InputDecoration(
+                                            labelText: 'Label',
+                                          ),
+                                          onChanged: (value) {
+                                            field['label'] = value;
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: '${field['key'] ?? ''}',
+                                          decoration: const InputDecoration(
+                                            labelText: 'Key',
+                                            hintText: 'drive_train',
+                                          ),
+                                          onChanged: (value) {
+                                            field['key'] = value;
+                                          },
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Remove field',
+                                        onPressed: () {
+                                          setDialogState(() {
+                                            editableFields.removeAt(index);
+                                          });
+                                        },
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue: type,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Type',
+                                          ),
+                                          items: const [
+                                            DropdownMenuItem(
+                                              value: 'text',
+                                              child: Text('Text'),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'checkbox',
+                                              child: Text('Checkbox'),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'select',
+                                              child: Text('Select'),
+                                            ),
+                                          ],
+                                          onChanged: (value) {
+                                            setDialogState(() {
+                                              field['type'] = value ?? 'text';
+                                              if (field['type'] != 'select') {
+                                                field['options'] = [];
+                                              } else if ((field['options']
+                                                          as List<dynamic>? ??
+                                                      [])
+                                                  .isEmpty) {
+                                                field['options'] = [
+                                                  'Option A',
+                                                  'Option B',
+                                                ];
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: CheckboxListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          title: const Text('Required'),
+                                          value: field['required'] == true,
+                                          onChanged: (value) {
+                                            setDialogState(() {
+                                              field['required'] =
+                                                  value ?? false;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (type == 'select')
+                                    TextFormField(
+                                      initialValue: options.join(', '),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Options (comma separated)',
+                                      ),
+                                      onChanged: (value) {
+                                        field['options'] = value
+                                            .split(',')
+                                            .map((entry) => entry.trim())
+                                            .where((entry) => entry.isNotEmpty)
+                                            .toList();
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save Template'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save Template'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (save != true) {
-      controller.dispose();
-      return;
-    }
+    if (save != true) return;
 
     try {
-      final decoded = jsonDecode(controller.text);
-      if (decoded is! List) {
-        throw Exception('Template JSON must be an array of field objects.');
-      }
+      final usedKeys = <String>{};
+      final fields = <Map<String, dynamic>>[];
+      for (final rawField in editableFields) {
+        final label = '${rawField['label'] ?? ''}'.trim();
+        final key = '${rawField['key'] ?? ''}'.trim();
+        final type = '${rawField['type'] ?? 'text'}'.trim();
+        final required = rawField['required'] == true;
+        final options = (rawField['options'] as List<dynamic>? ?? [])
+            .map((entry) => '$entry'.trim())
+            .where((entry) => entry.isNotEmpty)
+            .toList();
 
-      final fields = decoded
-          .whereType<Map>()
-          .map((entry) => Map<String, dynamic>.from(entry))
-          .toList();
+        if (label.isEmpty || key.isEmpty) {
+          throw Exception('Each custom field needs both label and key.');
+        }
+        if (usedKeys.contains(key)) {
+          throw Exception('Template keys must be unique. Duplicate: $key');
+        }
+        if (type == 'select' && options.isEmpty) {
+          throw Exception('Select fields need at least one option.');
+        }
+
+        usedKeys.add(key);
+        fields.add({
+          'label': label,
+          'key': key,
+          'type': type,
+          'required': required,
+          if (type == 'select') 'options': options,
+        });
+      }
 
       await backend.savePitTemplate(fields);
       await _loadTemplate();
@@ -158,8 +365,6 @@ class _PitScoutingState extends State<PitScouting> {
           content: Text(error.toString().replaceFirst('Exception: ', '')),
         ),
       );
-    } finally {
-      controller.dispose();
     }
   }
 
@@ -195,11 +400,47 @@ class _PitScoutingState extends State<PitScouting> {
       _customValues.clear();
       setState(() {});
     }
+    await _refreshOfflineCount();
+  }
+
+  Future<void> _syncOfflinePitQueue() async {
+    if (_syncingOffline) return;
+    setState(() {
+      _syncingOffline = true;
+    });
+    try {
+      final sent = await backend.syncOfflinePitData();
+      await _refreshOfflineCount();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Synced $sent offline pit entr${sent == 1 ? 'y' : 'ies'}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _syncingOffline = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
+    final contentWidth = math.min(
+      width - measurements.extraLargePadding,
+      760.0,
+    );
 
     final labels = ['Team Number', 'Team Name'];
 
@@ -207,44 +448,64 @@ class _PitScoutingState extends State<PitScouting> {
       child: Container(
         color: colors.baseColors[4],
         padding: EdgeInsets.only(bottom: measurements.extraLargePadding),
-        child: Column(
-          children: [
-            SizedBox(height: measurements.largePadding),
-            if (backend.canManagePitTemplate)
-              Padding(
-                padding: EdgeInsets.only(bottom: measurements.mediumPadding),
-                child: SizedBox(
-                  width: width - measurements.extraLargePadding,
-                  child: OutlinedButton.icon(
-                    onPressed: _openTemplateEditor,
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Edit Pit Template'),
+        child: Center(
+          child: Column(
+            children: [
+              SizedBox(height: measurements.largePadding),
+              if (backend.canManagePitTemplate)
+                Padding(
+                  padding: EdgeInsets.only(bottom: measurements.mediumPadding),
+                  child: SizedBox(
+                    width: contentWidth,
+                    child: OutlinedButton.icon(
+                      onPressed: _openTemplateEditor,
+                      icon: const Icon(Icons.tune),
+                      label: const Text('Edit Pit Template'),
+                    ),
                   ),
                 ),
-              ),
-            for (int i = 0; i < 2; i++)
-              _buildTextField(width, labels[i], _controllers[i], i),
-            SizedBox(height: measurements.mediumPadding),
-            if (_templateLoading)
-              const CircularProgressIndicator()
-            else
-              ...backend.pitTemplateFields.map(
-                (field) => _buildCustomField(width, field),
-              ),
-            SizedBox(height: measurements.extraLargePadding),
-            SizedBox(
-              width: width - measurements.extraLargePadding,
-              height: measurements.clickHeight,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.mainColors[0],
-                  foregroundColor: colors.accentColors[0],
+              for (int i = 0; i < 2; i++)
+                _buildTextField(contentWidth, labels[i], _controllers[i], i),
+              SizedBox(height: measurements.mediumPadding),
+              if (_templateLoading)
+                const CircularProgressIndicator()
+              else
+                ...backend.pitTemplateFields.map(
+                  (field) => _buildCustomField(contentWidth, field),
                 ),
-                onPressed: _submit,
-                child: const Text('Submit', style: TextStyle(fontSize: 18)),
+              SizedBox(height: measurements.extraLargePadding),
+              SizedBox(
+                width: contentWidth,
+                height: measurements.clickHeight,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.mainColors[0],
+                    foregroundColor: colors.accentColors[0],
+                  ),
+                  onPressed: _submit,
+                  child: const Text('Submit', style: TextStyle(fontSize: 18)),
+                ),
               ),
-            ),
-          ],
+              SizedBox(height: measurements.mediumPadding),
+              SizedBox(
+                width: contentWidth,
+                height: measurements.clickHeight,
+                child: OutlinedButton.icon(
+                  onPressed: _offlinePendingCount == 0 || _syncingOffline
+                      ? null
+                      : _syncOfflinePitQueue,
+                  icon: _syncingOffline
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text('Send Offline Pit Data ($_offlinePendingCount)'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -262,7 +523,7 @@ class _PitScoutingState extends State<PitScouting> {
     if (type == 'checkbox') {
       final checked = (_customValues[key] as bool?) ?? false;
       return SizedBox(
-        width: width - measurements.extraLargePadding,
+        width: width,
         child: CheckboxListTile(
           title: Text(label, style: TextStyle(color: colors.baseColors[2])),
           value: checked,
@@ -292,7 +553,7 @@ class _PitScoutingState extends State<PitScouting> {
       return Padding(
         padding: EdgeInsets.only(bottom: measurements.largePadding),
         child: SizedBox(
-          width: width - measurements.extraLargePadding,
+          width: width,
           child: DropdownButtonFormField<String>(
             value: selected.isEmpty ? null : selected,
             decoration: InputDecoration(
@@ -337,7 +598,7 @@ class _PitScoutingState extends State<PitScouting> {
     return Column(
       children: [
         SizedBox(
-          width: width - measurements.extraLargePadding,
+          width: width,
           child: TextField(
             controller: controller,
             onChanged: (val) {

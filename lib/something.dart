@@ -13,8 +13,10 @@ class Functions {
   static final Functions _instance = Functions._internal();
   factory Functions() => _instance;
 
+  late final Future<void> ready;
+
   Functions._internal() {
-    _bootstrap();
+    ready = _bootstrap();
   }
 
   static String get _apiBaseUrl {
@@ -50,6 +52,8 @@ class Functions {
   static const _sessionRoleKey = 'spectator.auth.role';
   static const _sessionEmailKey = 'spectator.auth.email';
   static const _sessionAvatarKey = 'spectator.auth.avatar';
+  static const _offlinePitQueueKey = 'spectator.offline.pitQueue';
+  static const _offlineMatchQueueKey = 'spectator.offline.matchQueue';
 
   bool signupEnabled = true;
   bool passkeysEnabled = false;
@@ -186,7 +190,7 @@ class Functions {
       appSettings[3] = true;
       await _persistSession();
     } catch (_) {
-      signOut();
+      // Keep locally persisted session while offline/unreachable.
     }
   }
 
@@ -293,6 +297,138 @@ class Functions {
       return text.replaceFirst('Exception: ', '');
     }
     return text;
+  }
+
+  bool _shouldStoreOffline(Object error) {
+    final lowered = _errorText(error).toLowerCase();
+    return lowered.contains('failed host lookup') ||
+        lowered.contains('socketexception') ||
+        lowered.contains('xmlhttprequest') ||
+        lowered.contains('failed to fetch') ||
+        lowered.contains('network') ||
+        lowered.contains('request failed. check backend url');
+  }
+
+  Future<List<Map<String, dynamic>>> _readOfflineQueue(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawItems = prefs.getStringList(key) ?? const [];
+    return rawItems
+        .map((item) {
+          try {
+            final decoded = jsonDecode(item);
+            if (decoded is Map<String, dynamic>) {
+              return decoded;
+            }
+            return <String, dynamic>{};
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _writeOfflineQueue(
+    String key,
+    List<Map<String, dynamic>> entries,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = entries.map((entry) => jsonEncode(entry)).toList();
+    await prefs.setStringList(key, encoded);
+  }
+
+  Future<void> _enqueueOfflineEntry(
+    String key,
+    Map<String, dynamic> payload,
+  ) async {
+    final queue = await _readOfflineQueue(key);
+    queue.add({...payload, 'queuedAt': DateTime.now().toIso8601String()});
+    if (queue.length > 300) {
+      queue.removeRange(0, queue.length - 300);
+    }
+    await _writeOfflineQueue(key, queue);
+  }
+
+  Future<int> getOfflinePitQueueCount() async {
+    final queue = await _readOfflineQueue(_offlinePitQueueKey);
+    return queue.length;
+  }
+
+  Future<int> getOfflineMatchQueueCount() async {
+    final queue = await _readOfflineQueue(_offlineMatchQueueKey);
+    return queue.length;
+  }
+
+  Future<int> syncOfflinePitData() async {
+    if (!isAuthenticated) {
+      throw Exception('Login required to sync offline pit data.');
+    }
+
+    final queued = await _readOfflineQueue(_offlinePitQueueKey);
+    if (queued.isEmpty) return 0;
+
+    final remaining = <Map<String, dynamic>>[];
+    var sent = 0;
+
+    for (final payload in queued) {
+      final cleaned = Map<String, dynamic>.from(payload)
+        ..remove('queuedAt')
+        ..remove('offlineOnly');
+      try {
+        final response = await _request(
+          method: 'POST',
+          path: '/pit-entries',
+          authenticated: true,
+          body: cleaned,
+        );
+        final entry = response['entry'] as Map<String, dynamic>?;
+        if (entry != null) {
+          scoutingDataList.insert(0, _normalizePitEntry(entry));
+        }
+        sent++;
+      } catch (_) {
+        remaining.add(payload);
+      }
+    }
+
+    await _writeOfflineQueue(_offlinePitQueueKey, remaining);
+    return sent;
+  }
+
+  Future<int> syncOfflineMatchData() async {
+    if (!isAuthenticated) {
+      throw Exception('Login required to sync offline match data.');
+    }
+
+    final queued = await _readOfflineQueue(_offlineMatchQueueKey);
+    if (queued.isEmpty) return 0;
+
+    final remaining = <Map<String, dynamic>>[];
+    var sent = 0;
+
+    for (final payload in queued) {
+      final cleaned = Map<String, dynamic>.from(payload)
+        ..remove('queuedAt')
+        ..remove('offlineOnly');
+      try {
+        final response = await _request(
+          method: 'POST',
+          path: '/match-entries',
+          authenticated: true,
+          body: cleaned,
+        );
+        final entry = response['entry'] as Map<String, dynamic>?;
+        if (entry != null) {
+          matchDataList.insert(0, _normalizeMatchEntry(entry));
+        }
+        sent++;
+      } catch (_) {
+        remaining.add(payload);
+      }
+    }
+
+    await _writeOfflineQueue(_offlineMatchQueueKey, remaining);
+    return sent;
   }
 
   Future<void> refreshAuthConfig() async {
@@ -685,11 +821,34 @@ class Functions {
       return false;
     }
 
+    final payload = <String, dynamic>{
+      'eventId': _selectedEventKey,
+      'datasheetId': selectedDatasheetId,
+      'teamNumber': pitInputs[0],
+      'teamName': pitInputs[1],
+      'humanPlayerConfidence': pitInputs[2],
+      'driveTrain': pitInputs[3],
+      'mainScoringPotential': pitInputs[4],
+      'pointsInAutonomous': pitInputs[5],
+      'teleOperatedCapabilities': pitInputs[6],
+      'customResponses': customPitResponses,
+    };
+
     if (_authToken == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please log in before submitting data.')),
-      );
-      return false;
+      await _enqueueOfflineEntry(_offlinePitQueueKey, {
+        ...payload,
+        'offlineOnly': true,
+      });
+      pitInputs = List.filled(7, '');
+      customPitResponses = {};
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved pit data offline. Login and sync later.'),
+          ),
+        );
+      }
+      return true;
     }
 
     try {
@@ -697,18 +856,7 @@ class Functions {
         method: 'POST',
         path: '/pit-entries',
         authenticated: true,
-        body: {
-          'eventId': _selectedEventKey,
-          'datasheetId': selectedDatasheetId,
-          'teamNumber': pitInputs[0],
-          'teamName': pitInputs[1],
-          'humanPlayerConfidence': pitInputs[2],
-          'driveTrain': pitInputs[3],
-          'mainScoringPotential': pitInputs[4],
-          'pointsInAutonomous': pitInputs[5],
-          'teleOperatedCapabilities': pitInputs[6],
-          'customResponses': customPitResponses,
-        },
+        body: payload,
       );
 
       final entry = response['entry'] as Map<String, dynamic>?;
@@ -727,6 +875,24 @@ class Functions {
 
       return true;
     } catch (error) {
+      if (_shouldStoreOffline(error)) {
+        await _enqueueOfflineEntry(_offlinePitQueueKey, {
+          ...payload,
+          'offlineOnly': true,
+        });
+        pitInputs = List.filled(7, '');
+        customPitResponses = {};
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Backend unreachable. Pit data saved offline for later sync.',
+              ),
+            ),
+          );
+        }
+        return true;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -798,6 +964,7 @@ class Functions {
     final response = await _request(
       method: 'GET',
       path: '/pit-entries/$id/versions',
+      authenticated: true,
     );
     return (response['versions'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
@@ -949,12 +1116,17 @@ class Functions {
     return pitOk && matchOk;
   }
 
-  Future<void> fetchPitEntries({String? teamNumber, String? teamName}) async {
+  Future<void> fetchPitEntries({
+    String? teamNumber,
+    String? teamName,
+    bool includeAllTeams = false,
+  }) async {
     final query = <String, String>{
       if (teamNumber != null && teamNumber.trim().isNotEmpty)
         'teamNumber': teamNumber.trim(),
       if (teamName != null && teamName.trim().isNotEmpty)
         'teamName': teamName.trim(),
+      if (includeAllTeams) 'scope': 'all',
       if ((selectedDatasheetId ?? '').isNotEmpty)
         'datasheetId': selectedDatasheetId!,
     };
@@ -963,6 +1135,7 @@ class Functions {
       method: 'GET',
       path: '/pit-entries',
       query: query.isEmpty ? null : query,
+      authenticated: isAuthenticated,
     );
 
     final entries = response['entries'] as List<dynamic>? ?? [];
@@ -976,12 +1149,14 @@ class Functions {
   Future<void> fetchMatchEntries({
     String? teamNumber,
     String? matchNumber,
+    bool includeAllTeams = false,
   }) async {
     final query = <String, String>{
       if (teamNumber != null && teamNumber.trim().isNotEmpty)
         'teamNumber': teamNumber.trim(),
       if (matchNumber != null && matchNumber.trim().isNotEmpty)
         'matchNumber': matchNumber.trim(),
+      if (includeAllTeams) 'scope': 'all',
       if ((selectedDatasheetId ?? '').isNotEmpty)
         'datasheetId': selectedDatasheetId!,
     };
@@ -990,6 +1165,7 @@ class Functions {
       method: 'GET',
       path: '/match-entries',
       query: query.isEmpty ? null : query,
+      authenticated: isAuthenticated,
     );
 
     final entries = response['entries'] as List<dynamic>? ?? [];
@@ -1155,8 +1331,11 @@ class Functions {
   Future<void> saveAboutProfile({
     required String title,
     required String mission,
+    String? missionMarkdown,
     List<String>? sponsors,
     String? website,
+    Map<String, String>? uiTheme,
+    String? dataVisibility,
   }) async {
     if (!canEditAbout) {
       throw Exception('Only Team Managers can edit About content.');
@@ -1170,8 +1349,11 @@ class Functions {
         'teamNumber': _teamNumber,
         'title': title,
         'mission': mission,
+        'missionMarkdown': missionMarkdown ?? mission,
         'sponsors': sponsors ?? const [],
         'website': website ?? '',
+        if (uiTheme != null) 'uiTheme': uiTheme,
+        if (dataVisibility != null) 'dataVisibility': dataVisibility,
       },
     );
 
@@ -1289,6 +1471,7 @@ class Functions {
     final response = await _request(
       method: 'GET',
       path: '/match-entries/$id/versions',
+      authenticated: true,
     );
     return (response['versions'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
@@ -1348,34 +1531,43 @@ class Functions {
   }
 
   Future<bool> submitMatchData(List<dynamic> data, BuildContext context) async {
+    final fireRate = double.tryParse('${data[3]}') ?? 0;
+    final payload = <String, dynamic>{
+      'eventId': _selectedEventKey,
+      'datasheetId': selectedDatasheetId,
+      'matchNumber': '${data[0]}',
+      'teamNumber': '${data[1]}',
+      'allianceColor': '${data[2]}',
+      'fireRate': fireRate,
+      'shotsAttempted': data[4],
+      'accuracy': data[5],
+      'calculatedPoints': data[6],
+      'autoClimb': data[7],
+      'climbLevel': '${data[8]}',
+      'scoutedAt': '${data[9]}',
+    };
+
     if (_authToken == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please log in before submitting data.')),
-      );
-      return false;
+      await _enqueueOfflineEntry(_offlineMatchQueueKey, {
+        ...payload,
+        'offlineOnly': true,
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved match data offline. Login and sync later.'),
+          ),
+        );
+      }
+      return true;
     }
 
     try {
-      final fireRate = double.tryParse('${data[3]}') ?? 0;
-
       final response = await _request(
         method: 'POST',
         path: '/match-entries',
         authenticated: true,
-        body: {
-          'eventId': _selectedEventKey,
-          'datasheetId': selectedDatasheetId,
-          'matchNumber': '${data[0]}',
-          'teamNumber': '${data[1]}',
-          'allianceColor': '${data[2]}',
-          'fireRate': fireRate,
-          'shotsAttempted': data[4],
-          'accuracy': data[5],
-          'calculatedPoints': data[6],
-          'autoClimb': data[7],
-          'climbLevel': '${data[8]}',
-          'scoutedAt': '${data[9]}',
-        },
+        body: payload,
       );
 
       final entry = response['entry'] as Map<String, dynamic>?;
@@ -1395,6 +1587,22 @@ class Functions {
 
       return true;
     } catch (error) {
+      if (_shouldStoreOffline(error)) {
+        await _enqueueOfflineEntry(_offlineMatchQueueKey, {
+          ...payload,
+          'offlineOnly': true,
+        });
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Backend unreachable. Match data saved offline for later sync.',
+              ),
+            ),
+          );
+        }
+        return true;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,

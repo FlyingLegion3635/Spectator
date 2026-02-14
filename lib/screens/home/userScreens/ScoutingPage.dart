@@ -39,6 +39,8 @@ class _ScoutingPageState extends State<ScoutingPage> {
   late String _allianceColor;
   double _accuracy = 1.0; // 1.0 = 100%
   int _calculatedPoints = 0;
+  bool _syncingOffline = false;
+  int _offlinePendingCount = 0;
   // --- Logic Variables ---
   Timer? _shootingTimer;
   Timer? _clearZoneTimer;
@@ -50,6 +52,7 @@ class _ScoutingPageState extends State<ScoutingPage> {
     _matchNumberController = TextEditingController(text: widget.matchNumber);
     _teamNumberController = TextEditingController(text: widget.teamNumber);
     _allianceColor = widget.allianceColor;
+    _refreshOfflineCount();
   }
 
   void _updatePoints() {
@@ -125,8 +128,48 @@ class _ScoutingPageState extends State<ScoutingPage> {
       DateTime.now().toIso8601String(),
     ];
     final success = await backend.submitMatchData(scoutingDataList, context);
+    await _refreshOfflineCount();
     if (!mounted || !success) return;
     Navigator.pop(context);
+  }
+
+  Future<void> _refreshOfflineCount() async {
+    final count = await backend.getOfflineMatchQueueCount();
+    if (!mounted) return;
+    setState(() {
+      _offlinePendingCount = count;
+    });
+  }
+
+  Future<void> _syncOfflineMatchQueue() async {
+    if (_syncingOffline) return;
+    setState(() {
+      _syncingOffline = true;
+    });
+    try {
+      final sent = await backend.syncOfflineMatchData();
+      await _refreshOfflineCount();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Synced $sent offline match entr${sent == 1 ? 'y' : 'ies'}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _syncingOffline = false;
+      });
+    }
   }
 
   // --- UI Helpers ---
@@ -499,6 +542,23 @@ class _ScoutingPageState extends State<ScoutingPage> {
                     borderRadius: BorderRadius.circular(25),
                   ),
                 ),
+              ),
+            ),
+            SizedBox(height: measurements.mediumPadding),
+            SizedBox(
+              height: measurements.clickHeight,
+              child: OutlinedButton.icon(
+                onPressed: _offlinePendingCount == 0 || _syncingOffline
+                    ? null
+                    : _syncOfflineMatchQueue,
+                icon: _syncingOffline
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_upload_outlined),
+                label: Text('Send Offline Match Data ($_offlinePendingCount)'),
               ),
             ),
             SizedBox(height: measurements.extraLargePadding),
