@@ -415,7 +415,6 @@ class _AboutState extends State<About> {
     final canEditViewedTeam = backend.canEditAbout && viewedTeam == ownTeam;
 
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       body: Stack(
         children: [
           Positioned.fill(

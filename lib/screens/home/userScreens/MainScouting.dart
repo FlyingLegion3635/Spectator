@@ -135,6 +135,10 @@ class _MainScoutingState extends State<MainScouting> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final usedSettings = Provider.of<SettingsModel>(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final buttonBackground = scheme.surface;
+    final buttonForeground = scheme.onSurface.withValues(alpha: 0.75);
 
     return SingleChildScrollView(
       child: Column(
@@ -152,10 +156,13 @@ class _MainScoutingState extends State<MainScouting> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(25),
                       child: Material(
-                        color: colorings.baseColors[0],
+                        color: buttonBackground,
                         child: IconButton(
                           onPressed: _openEventSearch,
-                          icon: const Icon(Icons.search),
+                          icon: Icon(
+                            Icons.search,
+                            color: buttonForeground,
+                          ),
                           tooltip: 'Search Team Events',
                         ),
                       ),
@@ -169,10 +176,10 @@ class _MainScoutingState extends State<MainScouting> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(25),
                     child: Material(
-                      color: colorings.baseColors[0],
+                      color: buttonBackground,
                       child: IconButton(
                         onPressed: _openEventKeyPrompt,
-                        icon: const Icon(Icons.key),
+                        icon: Icon(Icons.key, color: buttonForeground),
                         tooltip: 'Enter Event Key',
                       ),
                     ),

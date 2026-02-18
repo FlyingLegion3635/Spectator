@@ -48,9 +48,7 @@ class _AccountPageState extends State<AccountPage> {
     final teamNumber = backend.teamNumber ?? '';
 
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       appBar: AppBar(
-        backgroundColor: colors.mainColors[0],
         title: const Text('Account'),
       ),
       body: ListView(
@@ -139,10 +137,6 @@ class _AccountPageState extends State<AccountPage> {
                       ButtonSegment<AppLayoutStyle>(
                         value: AppLayoutStyle.classic,
                         label: Text('Classic'),
-                      ),
-                      ButtonSegment<AppLayoutStyle>(
-                        value: AppLayoutStyle.liquidGlass,
-                        label: Text('Liquid Glass'),
                       ),
                       ButtonSegment<AppLayoutStyle>(
                         value: AppLayoutStyle.simple,

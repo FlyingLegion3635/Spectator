@@ -36,7 +36,6 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: colors.baseColors[4],
       body: Stack(
         children: [
           Center(

@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:spectator/something.dart';
 import 'package:spectator/screens/account/account.dart';
 import 'package:spectator/screens/about_app/about_app.dart';
-import 'package:spectator/screens/home/color.dart';
 import 'package:spectator/screens/home/userScreens/About.dart';
 import 'package:spectator/screens/home/userScreens/Data.dart';
 import 'package:spectator/screens/home/userScreens/MainScouting.dart';
@@ -30,7 +29,6 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> with TickerProviderStateMixin {
   final TabStyle _tabStyle = TabStyle.reactCircle;
-  final dynamic colors = Colorings();
   final Functions backend = Functions();
 
   int _currentIndex = 0;
@@ -67,187 +65,194 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
     final settings = Provider.of<SettingsModel>(context, listen: false);
     final usedSettings = Provider.of<SettingsModel>(context);
     final isAuthenticated = backend.isAuthenticated;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isSimple = usedSettings.layoutStyle == AppLayoutStyle.simple;
+    final appBarBackground =
+        theme.appBarTheme.backgroundColor ?? scheme.primary;
+    final appBarForeground =
+        theme.appBarTheme.foregroundColor ?? scheme.onPrimary;
+    final drawerIconColor = scheme.onSurface;
+    final drawerMuted = scheme.onSurface.withValues(alpha: 0.7);
 
     final tabs = _visibleTabs(isAuthenticated);
     if (_currentIndex >= tabs.length) {
       _currentIndex = 0;
     }
     final currentTitle = tabs[_currentIndex].title;
-    final onPrimary =
-        ThemeData.estimateBrightnessForColor(colors.mainColors[0]) ==
-            Brightness.dark
-        ? Colors.white
-        : const Color(0xFF0F172A);
+    final navBackground = isSimple ? scheme.surface : scheme.primary;
+    final navForeground = isSimple ? scheme.onSurface : scheme.onPrimary;
+
+    Widget buildDrawer() {
+      return Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            DrawerHeader(
+              decoration: BoxDecoration(color: appBarBackground),
+              child: Text(
+                'Spectator Menu',
+                style: TextStyle(color: appBarForeground, fontSize: 24),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.text_fields, color: drawerIconColor),
+              title: Text(
+                'Text Size',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              onTap: () {
+                settings.setFontSize(settings.fontSize == 14.0 ? 17.0 : 14.0);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                settings.themeMode == ThemeMode.dark
+                    ? Icons.dark_mode
+                    : settings.themeMode == ThemeMode.light
+                    ? Icons.light_mode
+                    : Icons.brightness_6,
+                color: drawerIconColor,
+              ),
+              title: Text(
+                'Theme: ${settings.themeModeLabel}',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              subtitle: Text(
+                'Tap to cycle System, Light, Dark',
+                style: TextStyle(color: drawerMuted),
+              ),
+              onTap: () {
+                settings.cycleThemeMode();
+              },
+            ),
+            SwitchListTile(
+              activeThumbColor: scheme.secondary,
+              title: Text(
+                'Use Personal Colors',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              subtitle: Text(
+                isAuthenticated
+                    ? 'Overrides team colors when your personal colors are set.'
+                    : 'Set your own colors after login in Account.',
+                style: TextStyle(color: drawerMuted),
+              ),
+              value: settings.preferPersonalColors,
+              onChanged: isAuthenticated
+                  ? (value) => settings.setPreferPersonalColors(value)
+                  : null,
+            ),
+            ListTile(
+              leading: Icon(
+                isAuthenticated ? Icons.account_circle : Icons.login,
+                color: drawerIconColor,
+              ),
+              title: Text(
+                isAuthenticated ? 'Account' : 'Login',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                if (isAuthenticated) {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AccountPage(),
+                    ),
+                  );
+                } else {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LoginPage(),
+                    ),
+                  );
+                }
+                if (!mounted) return;
+                await settings.syncAuthThemeState();
+                setState(() {});
+              },
+            ),
+            const Divider(height: 18),
+            ListTile(
+              leading: Icon(Icons.info_outline, color: drawerIconColor),
+              title: Text(
+                'About App',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AboutAppPage(),
+                  ),
+                );
+              },
+            ),
+            if (isAuthenticated)
+              ListTile(
+                leading: Icon(Icons.logout, color: drawerIconColor),
+                title: Text(
+                  'Sign Out',
+                  style: TextStyle(
+                    color: drawerIconColor,
+                    fontSize: usedSettings.fontSize,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  backend.signOut();
+                  settings.handleSignedOut();
+                  setState(() {
+                    _currentIndex = 0;
+                  });
+                },
+              ),
+          ],
+        ),
+      );
+    }
 
     return DefaultTabController(
       length: tabs.length,
       initialIndex: _currentIndex,
       child: Scaffold(
-        backgroundColor: colors.baseColors[4],
         appBar: AppBar(
-          backgroundColor: colors.mainColors[0],
-          iconTheme: IconThemeData(color: onPrimary),
+          iconTheme: IconThemeData(color: appBarForeground),
           title: Text(
             'Spectator $currentTitle',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: onPrimary,
+              color: appBarForeground,
               letterSpacing: 0.4,
             ),
           ),
           centerTitle: true,
         ),
-        drawer: Drawer(
-          backgroundColor: colors.baseColors[4],
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: <Widget>[
-              DrawerHeader(
-                decoration: BoxDecoration(color: colors.mainColors[0]),
-                child: Text(
-                  'Spectator Menu',
-                  style: TextStyle(color: onPrimary, fontSize: 24),
-                ),
-              ),
-              ListTile(
-                leading: Icon(Icons.text_fields, color: colors.baseColors[0]),
-                title: Text(
-                  'Text Size',
-                  style: TextStyle(
-                    color: colors.baseColors[0],
-                    fontSize: usedSettings.fontSize,
-                  ),
-                ),
-                onTap: () {
-                  settings.setFontSize(settings.fontSize == 14.0 ? 17.0 : 14.0);
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  settings.themeMode == ThemeMode.dark
-                      ? Icons.dark_mode
-                      : settings.themeMode == ThemeMode.light
-                      ? Icons.light_mode
-                      : Icons.brightness_6,
-                  color: colors.baseColors[0],
-                ),
-                title: Text(
-                  'Theme: ${settings.themeModeLabel}',
-                  style: TextStyle(
-                    color: colors.baseColors[0],
-                    fontSize: usedSettings.fontSize,
-                  ),
-                ),
-                subtitle: Text(
-                  'Tap to cycle System, Light, Dark',
-                  style: TextStyle(color: colors.baseColors[1]),
-                ),
-                onTap: () {
-                  settings.cycleThemeMode();
-                },
-              ),
-              SwitchListTile(
-                activeThumbColor: colors.accentColors[0],
-                title: Text(
-                  'Use Personal Colors',
-                  style: TextStyle(
-                    color: colors.baseColors[0],
-                    fontSize: usedSettings.fontSize,
-                  ),
-                ),
-                subtitle: Text(
-                  isAuthenticated
-                      ? 'Overrides team colors when your personal colors are set.'
-                      : 'Set your own colors after login in Account.',
-                  style: TextStyle(color: colors.baseColors[1]),
-                ),
-                value: settings.preferPersonalColors,
-                onChanged: isAuthenticated
-                    ? (value) => settings.setPreferPersonalColors(value)
-                    : null,
-              ),
-              ListTile(
-                leading: Icon(
-                  isAuthenticated ? Icons.account_circle : Icons.login,
-                  color: colors.baseColors[0],
-                ),
-                title: Text(
-                  isAuthenticated ? 'Account' : 'Login',
-                  style: TextStyle(
-                    color: colors.baseColors[0],
-                    fontSize: usedSettings.fontSize,
-                  ),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (isAuthenticated) {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AccountPage(),
-                      ),
-                    );
-                  } else {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const LoginPage(),
-                      ),
-                    );
-                  }
-                  if (!mounted) return;
-                  await settings.syncAuthThemeState();
-                  setState(() {});
-                },
-              ),
-              const Divider(height: 18),
-              ListTile(
-                leading: Icon(Icons.info_outline, color: colors.baseColors[0]),
-                title: Text(
-                  'About App',
-                  style: TextStyle(
-                    color: colors.baseColors[0],
-                    fontSize: usedSettings.fontSize,
-                  ),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AboutAppPage(),
-                    ),
-                  );
-                },
-              ),
-              if (isAuthenticated)
-                ListTile(
-                  leading: Icon(Icons.logout, color: colors.baseColors[0]),
-                  title: Text(
-                    'Sign Out',
-                    style: TextStyle(
-                      color: colors.baseColors[0],
-                      fontSize: usedSettings.fontSize,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    backend.signOut();
-                    settings.handleSignedOut();
-                    setState(() {
-                      _currentIndex = 0;
-                    });
-                  },
-                ),
-            ],
-          ),
-        ),
+        drawer: buildDrawer(),
         body: tabs[_currentIndex].page,
         bottomNavigationBar: ConvexAppBar(
-          backgroundColor: colors.mainColors[0],
-          color: onPrimary.withValues(alpha: 0.75),
-          activeColor: onPrimary,
+          backgroundColor: navBackground,
+          color: navForeground.withValues(alpha: 0.7),
+          activeColor: navForeground,
           style: _tabStyle,
           items: <TabItem>[
             for (final tab in tabs) TabItem(icon: tab.icon, title: tab.title),

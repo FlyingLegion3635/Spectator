@@ -1064,7 +1064,6 @@ class _DataPageState extends State<DataPage> {
     }
 
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       body: Column(
         children: [
           SizedBox(height: measurements.largePadding),

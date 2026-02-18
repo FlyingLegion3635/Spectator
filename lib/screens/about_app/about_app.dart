@@ -6,13 +6,10 @@ class AboutAppPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Colorings();
     final measurements = Measurements();
 
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       appBar: AppBar(
-        backgroundColor: colors.mainColors[0],
         title: const Text('About Spectator'),
       ),
       body: ListView(

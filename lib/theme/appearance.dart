@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spectator/something.dart';
 
-enum AppLayoutStyle { classic, liquidGlass, simple }
+enum AppLayoutStyle { classic, simple }
 
 class ThemePaletteBridge {
   static ThemePalette _palette = ThemePalette(
@@ -47,17 +47,11 @@ class ThemePalette {
             _mix(primary, Colors.white, 0.18),
             _mix(primary, Colors.black, 0.28),
           ];
-        case AppLayoutStyle.liquidGlass:
-          return [
-            _mix(primary, Colors.white, 0.26),
-            _mix(primary, Colors.white, 0.4),
-            _mix(primary, Colors.black, 0.12),
-          ];
         case AppLayoutStyle.simple:
-          return [
-            _mix(primary, const Color(0xFF334155), 0.55),
-            _mix(primary, const Color(0xFF475569), 0.68),
-            _mix(primary, const Color(0xFF1E293B), 0.72),
+          return const [
+            Color(0xFF111827),
+            Color(0xFF1F2937),
+            Color(0xFF0B1220),
           ];
       }
     }
@@ -69,17 +63,11 @@ class ThemePalette {
           _mix(primary, Colors.white, 0.34),
           _mix(primary, Colors.white, 0.78),
         ];
-      case AppLayoutStyle.liquidGlass:
-        return [
-          _mix(primary, Colors.white, 0.42),
-          _mix(primary, Colors.white, 0.62),
-          _mix(primary, Colors.white, 0.88),
-        ];
       case AppLayoutStyle.simple:
-        return [
-          _mix(primary, const Color(0xFFE2E8F0), 0.84),
-          _mix(primary, const Color(0xFFCBD5E1), 0.92),
-          _mix(primary, const Color(0xFFF8FAFC), 0.96),
+        return const [
+          Color(0xFFF8FAFC),
+          Color(0xFFE2E8F0),
+          Color(0xFFF1F5F9),
         ];
     }
   }
@@ -92,12 +80,6 @@ class ThemePalette {
             accent,
             _mix(accent, Colors.white, 0.18),
             _mix(accent, Colors.black, 0.32),
-          ];
-        case AppLayoutStyle.liquidGlass:
-          return [
-            _mix(accent, Colors.white, 0.28),
-            _mix(accent, Colors.white, 0.4),
-            _mix(accent, Colors.black, 0.14),
           ];
         case AppLayoutStyle.simple:
           return [
@@ -114,12 +96,6 @@ class ThemePalette {
           _mix(accent, Colors.white, 0.14),
           _mix(accent, Colors.white, 0.36),
           _mix(accent, Colors.white, 0.78),
-        ];
-      case AppLayoutStyle.liquidGlass:
-        return [
-          _mix(accent, Colors.white, 0.36),
-          _mix(accent, Colors.white, 0.58),
-          _mix(accent, Colors.white, 0.86),
         ];
       case AppLayoutStyle.simple:
         return [
@@ -141,14 +117,6 @@ class ThemePalette {
             Color(0xFF64748B),
             Color(0xFF0B1220),
           ];
-        case AppLayoutStyle.liquidGlass:
-          return const [
-            Color(0xFFF8FAFC),
-            Color(0xFFE2E8F0),
-            Color(0xFFCBD5E1),
-            Color(0xFF94A3B8),
-            Color(0xFF081122),
-          ];
         case AppLayoutStyle.simple:
           return const [
             Color(0xFFE5E7EB),
@@ -168,14 +136,6 @@ class ThemePalette {
           Color(0xFF1E293B),
           Color(0xFF64748B),
           Color(0xFFF8FAFC),
-        ];
-      case AppLayoutStyle.liquidGlass:
-        return const [
-          Color(0xFF0B1324),
-          Color(0xFF1E293B),
-          Color(0xFF334155),
-          Color(0xFF64748B),
-          Color(0xFFF2F7FF),
         ];
       case AppLayoutStyle.simple:
         return const [
@@ -275,8 +235,6 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
     switch (_layoutStyle) {
       case AppLayoutStyle.classic:
         return 'Classic';
-      case AppLayoutStyle.liquidGlass:
-        return 'Liquid Glass';
       case AppLayoutStyle.simple:
         return 'Simple';
     }
@@ -346,30 +304,38 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
     final seed = Color.lerp(primary, accent, 0.35) ?? primary;
     final onPrimary = ThemePalette.onColor(primary);
     final onSecondary = ThemePalette.onColor(accent);
-    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness)
-        .copyWith(
-          primary: primary,
-          secondary: accent,
-          tertiary: accent,
-          onPrimary: onPrimary,
-          onSecondary: onSecondary,
-          surface: brightness == Brightness.dark
-              ? const Color(0xFF162238)
-              : Colors.white,
-          surfaceContainerHighest: brightness == Brightness.dark
-              ? const Color(0xFF1C2A45)
-              : const Color(0xFFE2E8F0),
-          onSurface: brightness == Brightness.dark
-              ? const Color(0xFFE2E8F0)
-              : const Color(0xFF0F172A),
-        );
+    final isSimple = _layoutStyle == AppLayoutStyle.simple;
+    final surfaceBase = brightness == Brightness.dark
+        ? (isSimple ? const Color(0xFF0F172A) : const Color(0xFF162238))
+        : Colors.white;
+    final surfaceHigh = brightness == Brightness.dark
+        ? const Color(0xFF1C2A45)
+        : const Color(0xFFE2E8F0);
+
+    final scheme =
+        ColorScheme.fromSeed(seedColor: seed, brightness: brightness).copyWith(
+      primary: primary,
+      secondary: accent,
+      tertiary: accent,
+      onPrimary: onPrimary,
+      onSecondary: onSecondary,
+      surface: surfaceBase,
+      surfaceContainerHighest: surfaceHigh,
+      onSurface: brightness == Brightness.dark
+          ? const Color(0xFFE2E8F0)
+          : const Color(0xFF0F172A),
+      outline: brightness == Brightness.dark
+          ? const Color(0xFF334155)
+          : const Color(0xFFCBD5E1),
+    );
     final textTheme = ThemeData(brightness: brightness).textTheme.apply(
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
     );
-
-    final isLiquidGlass = _layoutStyle == AppLayoutStyle.liquidGlass;
-    final isSimple = _layoutStyle == AppLayoutStyle.simple;
+    final appBarBackground =
+        isSimple ? scheme.surface : primary;
+    final appBarForeground =
+        isSimple ? scheme.onSurface : onPrimary;
 
     return ThemeData(
       useMaterial3: true,
@@ -377,62 +343,57 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       scaffoldBackgroundColor: brightness == Brightness.dark
-          ? (isLiquidGlass ? const Color(0xFF0A1228) : const Color(0xFF0B1220))
-          : (isLiquidGlass ? const Color(0xFFEAF2FF) : const Color(0xFFF1F5F9)),
+          ? const Color(0xFF0B1220)
+          : const Color(0xFFF1F5F9),
       appBarTheme: AppBarTheme(
-        backgroundColor: primary,
-        foregroundColor: onPrimary,
+        backgroundColor: appBarBackground,
+        foregroundColor: appBarForeground,
         elevation: isSimple ? 0.0 : 0.6,
+        scrolledUnderElevation: isSimple ? 0.0 : 0.8,
         centerTitle: true,
+        surfaceTintColor: Colors.transparent,
       ),
       drawerTheme: DrawerThemeData(
-        backgroundColor: isLiquidGlass
-            ? (brightness == Brightness.dark
-                  ? const Color(0xFF0F172A).withValues(alpha: 0.88)
-                  : const Color(0xFFF8FAFC).withValues(alpha: 0.9))
-            : brightness == Brightness.dark
-            ? const Color(0xFF0F172A)
-            : const Color(0xFFF8FAFC),
+        backgroundColor: isSimple
+            ? scheme.surface
+            : (brightness == Brightness.dark
+                  ? const Color(0xFF0F172A)
+                  : const Color(0xFFF8FAFC)),
       ),
       cardTheme: CardThemeData(
-        elevation: isSimple ? 0 : (isLiquidGlass ? 0.6 : 1.2),
-        color: isLiquidGlass
-            ? scheme.surface.withValues(
-                alpha: brightness == Brightness.dark ? 0.76 : 0.82,
-              )
-            : null,
+        elevation: isSimple ? 0 : 1.2,
+        color: isSimple ? scheme.surface : null,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 10 : (isLiquidGlass ? 24 : 18),
+            isSimple ? 10 : 18,
           ),
           side: isSimple
-              ? BorderSide(color: scheme.outline.withValues(alpha: 0.3))
+              ? BorderSide(color: scheme.outline.withValues(alpha: 0.4))
               : BorderSide.none,
         ),
+        surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isLiquidGlass
-            ? scheme.surface.withValues(
-                alpha: brightness == Brightness.dark ? 0.62 : 0.75,
-              )
-            : brightness == Brightness.dark
-            ? const Color(0xFF1E293B).withValues(alpha: 0.42)
-            : Colors.white,
+        fillColor: isSimple
+            ? scheme.surface
+            : (brightness == Brightness.dark
+                  ? const Color(0xFF1E293B).withValues(alpha: 0.42)
+                  : Colors.white),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : (isLiquidGlass ? 18 : 14),
+            isSimple ? 8 : 14,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : (isLiquidGlass ? 18 : 14),
+            isSimple ? 8 : 14,
           ),
           borderSide: BorderSide(color: scheme.outline.withValues(alpha: 0.45)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : (isLiquidGlass ? 18 : 14),
+            isSimple ? 8 : 14,
           ),
           borderSide: BorderSide(color: accent, width: 2.0),
         ),
@@ -449,7 +410,7 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
         textColor: scheme.onSurface,
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outline.withValues(alpha: isSimple ? 0.34 : 0.2),
+        color: scheme.outline.withValues(alpha: isSimple ? 0.4 : 0.2),
       ),
     );
   }
@@ -503,8 +464,6 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
 
   AppLayoutStyle _fromLayoutStyleString(String value) {
     switch (value) {
-      case 'liquid_glass':
-        return AppLayoutStyle.liquidGlass;
       case 'simple':
         return AppLayoutStyle.simple;
       default:
@@ -516,8 +475,6 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
     switch (style) {
       case AppLayoutStyle.classic:
         return 'classic';
-      case AppLayoutStyle.liquidGlass:
-        return 'liquid_glass';
       case AppLayoutStyle.simple:
         return 'simple';
     }

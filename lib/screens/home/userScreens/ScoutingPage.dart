@@ -192,21 +192,23 @@ class _ScoutingPageState extends State<ScoutingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appBarForeground =
+        theme.appBarTheme.foregroundColor ?? theme.colorScheme.onPrimary;
+
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       appBar: AppBar(
-        backgroundColor: colors.mainColors[0],
         centerTitle: true,
         title: Text(
           "MATCH SCOUTING",
           style: TextStyle(
             fontSize: 24,
-            color: colors.accentColors[0],
+            color: appBarForeground,
             fontFamily: "Monospace",
             letterSpacing: 2.0,
           ),
         ),
-        iconTheme: IconThemeData(color: colors.accentColors[0]),
+        iconTheme: IconThemeData(color: appBarForeground),
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(measurements.largePadding),

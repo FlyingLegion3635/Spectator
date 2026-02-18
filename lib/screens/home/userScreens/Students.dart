@@ -221,7 +221,6 @@ class _StudentsState extends State<Students> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: colors.baseColors[4],
       floatingActionButton: backend.canInviteStudents
           ? FloatingActionButton.extended(
               onPressed: _inviteStudent,
