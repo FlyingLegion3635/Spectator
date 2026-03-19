@@ -1,0 +1,280 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.38.9'
+
+jobs:
+  # Android
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter build apk --release --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Rename artifact
+        run: cp build/app/outputs/flutter-apk/app-release.apk "Spectator_Android_${{ env.SHORT_SHA }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectator_Android_${{ env.SHORT_SHA }}
+          path: Spectator_Android_${{ env.SHORT_SHA }}.apk
+
+  # Linux packages
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            rpm
+
+      - run: flutter pub get
+      - run: flutter build linux --release --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Create .deb package (Debian/Ubuntu)
+        run: |
+          PKG_ROOT=$(mktemp -d)
+          mkdir -p "$PKG_ROOT/DEBIAN"
+          mkdir -p "$PKG_ROOT/usr/local/bin"
+          mkdir -p "$PKG_ROOT/usr/local/lib/spectator"
+          mkdir -p "$PKG_ROOT/usr/share/applications"
+
+          cp -r build/linux/x64/release/bundle/* "$PKG_ROOT/usr/local/lib/spectator/"
+
+          # Launcher script
+          cat > "$PKG_ROOT/usr/local/bin/spectator" << 'LAUNCHER'
+          #!/bin/bash
+          exec /usr/local/lib/spectator/spectator "$@"
+          LAUNCHER
+          chmod +x "$PKG_ROOT/usr/local/bin/spectator"
+
+          # Desktop entry
+          cat > "$PKG_ROOT/usr/share/applications/spectator.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Spectator
+          Exec=/usr/local/bin/spectator
+          Icon=spectator
+          Categories=Utility;
+          DESKTOP
+
+          # Control file
+          cat > "$PKG_ROOT/DEBIAN/control" << CTRL
+          Package: spectator
+          Version: 1.0.0
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0
+          Maintainer: Spectator Team
+          Description: Spectator application
+          CTRL
+
+          dpkg-deb --build "$PKG_ROOT" "Spectator_Linux-deb_${{ env.SHORT_SHA }}.deb"
+
+      - name: Create .rpm package (RHEL/Fedora)
+        run: |
+          mkdir -p ~/rpmbuild/{SPECS,BUILDROOT}
+          RPM_ROOT=~/rpmbuild/BUILDROOT/spectator-1.0.0-1.x86_64
+
+          mkdir -p "$RPM_ROOT/usr/local/bin"
+          mkdir -p "$RPM_ROOT/usr/local/lib/spectator"
+          mkdir -p "$RPM_ROOT/usr/share/applications"
+
+          cp -r build/linux/x64/release/bundle/* "$RPM_ROOT/usr/local/lib/spectator/"
+
+          cat > "$RPM_ROOT/usr/local/bin/spectator" << 'LAUNCHER'
+          #!/bin/bash
+          exec /usr/local/lib/spectator/spectator "$@"
+          LAUNCHER
+          chmod +x "$RPM_ROOT/usr/local/bin/spectator"
+
+          cat > "$RPM_ROOT/usr/share/applications/spectator.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Spectator
+          Exec=/usr/local/bin/spectator
+          Icon=spectator
+          Categories=Utility;
+          DESKTOP
+
+          cat > ~/rpmbuild/SPECS/spectator.spec << 'SPEC'
+          Name:    spectator
+          Version: 1.0.0
+          Release: 1
+          Summary: Spectator application
+          License: Proprietary
+          AutoReqProv: no
+          Requires: gtk3
+
+          %description
+          Spectator application
+
+          %files
+          /usr/local/bin/spectator
+          /usr/local/lib/spectator
+          /usr/share/applications/spectator.desktop
+          SPEC
+
+          rpmbuild -bb ~/rpmbuild/SPECS/spectator.spec
+          cp ~/rpmbuild/RPMS/x86_64/spectator-*.rpm "./Spectator_Linux-rpm_${{ env.SHORT_SHA }}.rpm"
+
+      - name: Create .pkg.tar.zst package (Arch)
+        run: |
+          PKG_DIR=$(mktemp -d)
+          mkdir -p "$PKG_DIR/usr/local/bin"
+          mkdir -p "$PKG_DIR/usr/local/lib/spectator"
+          mkdir -p "$PKG_DIR/usr/share/applications"
+
+          cp -r build/linux/x64/release/bundle/* "$PKG_DIR/usr/local/lib/spectator/"
+
+          cat > "$PKG_DIR/usr/local/bin/spectator" << 'LAUNCHER'
+          #!/bin/bash
+          exec /usr/local/lib/spectator/spectator "$@"
+          LAUNCHER
+          chmod +x "$PKG_DIR/usr/local/bin/spectator"
+
+          cat > "$PKG_DIR/usr/share/applications/spectator.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Spectator
+          Exec=/usr/local/bin/spectator
+          Icon=spectator
+          Categories=Utility;
+          DESKTOP
+
+          # .PKGINFO
+          cat > "$PKG_DIR/.PKGINFO" << 'PKGINFO'
+          pkgname = spectator
+          pkgver = 1.0.0-1
+          pkgdesc = Spectator application
+          url = https://github.com/spectator
+          arch = x86_64
+          depend = gtk3
+          PKGINFO
+
+          # Build the tar archive
+          cd "$PKG_DIR"
+          tar -cf - .PKGINFO usr | zstd -o "$GITHUB_WORKSPACE/Spectator_Linux-arch_${{ env.SHORT_SHA }}.pkg.tar.zst"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectator_Linux_${{ env.SHORT_SHA }}
+          path: |
+            Spectator_Linux-deb_${{ env.SHORT_SHA }}.deb
+            Spectator_Linux-rpm_${{ env.SHORT_SHA }}.rpm
+            Spectator_Linux-arch_${{ env.SHORT_SHA }}.pkg.tar.zst
+
+  # Windows
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $env:GITHUB_ENV
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter build windows --release --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Package Windows build
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "Spectator_Windows_${{ env.SHORT_SHA }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectator_Windows_${{ env.SHORT_SHA }}
+          path: Spectator_Windows_${{ env.SHORT_SHA }}.zip
+
+  # macOS
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter build macos --release --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Package macOS build
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r "$GITHUB_WORKSPACE/Spectator_macOS_${{ env.SHORT_SHA }}.zip" *.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectator_macOS_${{ env.SHORT_SHA }}
+          path: Spectator_macOS_${{ env.SHORT_SHA }}.zip
+
+  # iOS
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+
+      - name: Package iOS build
+        run: |
+          cd build/ios/iphoneos
+          zip -r "$GITHUB_WORKSPACE/Spectator_iOS_${{ env.SHORT_SHA }}.zip" Runner.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectator_iOS_${{ env.SHORT_SHA }}
+          path: Spectator_iOS_${{ env.SHORT_SHA }}.zip
