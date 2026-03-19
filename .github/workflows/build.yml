@@ -1,11 +1,19 @@
 name: Build All Platforms
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options:
+          - Release
+          - Beta
+      version:
+        description: 'Version (e.g. 1.0.0)'
+        required: true
+        type: string
 
 env:
   FLUTTER_VERSION: '3.38.9'
@@ -16,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -50,6 +60,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -116,6 +128,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -192,6 +206,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -258,6 +274,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $env:GITHUB_ENV
@@ -283,6 +301,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -300,14 +320,10 @@ jobs:
           APP_PATH="build/macos/Build/Products/Release/spectator.app"
           DMG_NAME="Spectator_macOS_${{ env.SHORT_SHA }}.dmg"
 
-          # Create a temporary directory for DMG contents
           DMG_DIR=$(mktemp -d)
           cp -r "$APP_PATH" "$DMG_DIR/"
-
-          # Create a symlink to /Applications for drag-and-drop install
           ln -s /Applications "$DMG_DIR/Applications"
 
-          # Build the DMG
           hdiutil create -volname "Spectator" \
             -srcfolder "$DMG_DIR" \
             -ov -format UDZO \
@@ -323,6 +339,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set short commit SHA
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -345,3 +363,87 @@ jobs:
         with:
           name: Spectator_iOS_${{ env.SHORT_SHA }}
           path: Spectator_iOS_${{ env.SHORT_SHA }}.ipa
+
+  # Create GitHub Release with all artifacts
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-android
+      - build-linux-deb
+      - build-linux-rpm
+      - build-linux-arch
+      - build-windows
+      - build-macos
+      - build-ios
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set short commit SHA
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          CHANNEL="${{ github.event.inputs.channel }}"
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v${VERSION}-$(echo "$CHANNEL" | tr '[:upper:]' '[:lower:]')"
+
+          # Find the previous release tag
+          PREV_TAG=$(git tag --sort=-creatordate | head -n 1)
+
+          # Determine commit range
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE=""
+          fi
+
+          # Build commit list with PR links
+          COMMITS=""
+          while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d'|' -f1)
+            MSG=$(echo "$line" | cut -d'|' -f2-)
+
+            # Check if this commit is associated with a PR
+            PR_NUMBER=$(gh api "repos/${REPO}/commits/${HASH}/pulls" --jq '.[0].number' 2>/dev/null || true)
+
+            if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+              COMMITS="${COMMITS}\n- ${MSG} ([#${PR_NUMBER}](https://github.com/${REPO}/pull/${PR_NUMBER})) (${HASH})"
+            else
+              COMMITS="${COMMITS}\n- ${MSG} (${HASH})"
+            fi
+          done < <(git log $RANGE --pretty=format:"%h|%s" --no-merges)
+
+          # Build contributors list
+          CONTRIBUTORS=$(git log $RANGE --pretty=format:"%an" --no-merges | sort -u | sed 's/^/- /')
+
+          printf "## Workflows: %s %s\n\n### Commits\n%b\n\n### Contributors\n%s\n" \
+            "$CHANNEL" "$VERSION" "$COMMITS" "$CONTRIBUTORS" > release_notes.md
+
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Workflows: ${CHANNEL} ${VERSION}" >> $GITHUB_ENV
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Collect release files
+        run: |
+          mkdir -p release_files
+          find artifacts/ -type f \( -name "*.apk" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" -o -name "*.zip" -o -name "*.dmg" -o -name "*.ipa" \) -exec cp {} release_files/ \;
+          ls -la release_files/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body_path: release_notes.md
+          prerelease: true
+          files: release_files/*
