@@ -5,6 +5,7 @@ Future<bool> downloadTextFile({
   required String filename,
   required String content,
   String mimeType = 'text/plain',
+  Object? sharePositionOrigin,
 }) async {
   final encoded = base64Encode(utf8.encode(content));
   final url = 'data:$mimeType;charset=utf-8;base64,$encoded';

@@ -39,9 +39,10 @@ function hashInviteCode(inviteCode) {
     .digest('hex');
 }
 
-async function usernameExists(usersRef, usernameNormalized) {
+async function usernameExistsInTeam(usersRef, usernameNormalized, teamNumber) {
   const duplicate = await usersRef
     .where('usernameNormalized', '==', usernameNormalized)
+    .where('teamNumber', '==', teamNumber)
     .limit(1)
     .get();
 
@@ -114,8 +115,8 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
   const normalizedRole = normalizeRole(role);
   const usersRef = db.collection(COLLECTIONS.USERS);
 
-  if (await usernameExists(usersRef, usernameNormalized)) {
-    throw new ApiError(409, 'Username already exists');
+  if (await usernameExistsInTeam(usersRef, usernameNormalized, normalizedTeam)) {
+    throw new ApiError(409, 'Username already exists on this team');
   }
 
   if (await emailExists(usersRef, emailNormalized)) {
@@ -175,17 +176,23 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
   return buildAuthPayload(createdUser);
 }
 
-async function loginUser({ username, password }) {
+async function loginUser({ username, password, teamNumber }) {
   const usernameNormalized = username.trim().toLowerCase();
+  const normalizedTeam = String(teamNumber || '').trim();
+
+  if (!normalizedTeam) {
+    throw new ApiError(400, 'Team number is required for login');
+  }
 
   const userQuery = await db
     .collection(COLLECTIONS.USERS)
     .where('usernameNormalized', '==', usernameNormalized)
+    .where('teamNumber', '==', normalizedTeam)
     .limit(1)
     .get();
 
   if (userQuery.empty) {
-    throw new ApiError(401, 'Invalid username or password');
+    throw new ApiError(401, 'Invalid username, team number, or password');
   }
 
   const doc = userQuery.docs[0];
@@ -193,7 +200,7 @@ async function loginUser({ username, password }) {
 
   const matches = await bcrypt.compare(password, user.passwordHash || '');
   if (!matches) {
-    throw new ApiError(401, 'Invalid username or password');
+    throw new ApiError(401, 'Invalid username, team number, or password');
   }
 
   await doc.ref.update({ lastLoginAt: FieldValue.serverTimestamp() });

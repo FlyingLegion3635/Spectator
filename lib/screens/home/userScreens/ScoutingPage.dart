@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:spectator/screens/home/color.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 // Assuming color.dart is in the same directory
 
 class ScoutingPage extends StatefulWidget {
@@ -39,6 +39,7 @@ class _ScoutingPageState extends State<ScoutingPage> {
   late String _allianceColor;
   double _accuracy = 1.0; // 1.0 = 100%
   int _calculatedPoints = 0;
+  bool _submitting = false;
   bool _syncingOffline = false;
   int _offlinePendingCount = 0;
   // --- Logic Variables ---
@@ -115,22 +116,33 @@ class _ScoutingPageState extends State<ScoutingPage> {
 
   // --- Submit Logic ---
   Future<void> _submitData() async {
-    List<dynamic> scoutingDataList = [
-      _matchNumberController.text,
-      _teamNumberController.text,
-      _allianceColor,
-      _fireRateController.text,
-      _ballsShot,
-      _accuracy,
-      _calculatedPoints,
-      _autoClimb,
-      _climbLevel ?? 'None',
-      DateTime.now().toIso8601String(),
-    ];
-    final success = await backend.submitMatchData(scoutingDataList, context);
-    await _refreshOfflineCount();
-    if (!mounted || !success) return;
-    Navigator.pop(context);
+    if (_submitting) return;
+    setState(() => _submitting = true);
+
+    try {
+      List<dynamic> scoutingDataList = [
+        _matchNumberController.text,
+        _teamNumberController.text,
+        _allianceColor,
+        _fireRateController.text,
+        _ballsShot,
+        _accuracy,
+        _calculatedPoints,
+        _autoClimb,
+        _climbLevel ?? 'None',
+        DateTime.now().toUtc().toIso8601String(),
+      ];
+      final success = await backend.submitMatchData(scoutingDataList, context);
+      await _refreshOfflineCount();
+      if (!mounted || !success) return;
+      // Only auto-pop when data was sent to the backend.
+      // When saved offline, keep the page open so the SnackBar is visible.
+      if (!backend.lastSubmitWasOffline) {
+        Navigator.pop(context);
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   Future<void> _refreshOfflineCount() async {
@@ -527,10 +539,19 @@ class _ScoutingPageState extends State<ScoutingPage> {
             SizedBox(
               height: measurements.clickHeight,
               child: ElevatedButton.icon(
-                onPressed: _submitData,
-                icon: Icon(Icons.save, color: colors.baseColors[0]),
+                onPressed: _submitting ? null : _submitData,
+                icon: _submitting
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.baseColors[0],
+                        ),
+                      )
+                    : Icon(Icons.save, color: colors.baseColors[0]),
                 label: Text(
-                  "SUBMIT DATA",
+                  _submitting ? "SUBMITTING..." : "SUBMIT DATA",
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

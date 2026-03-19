@@ -1,5 +1,6 @@
 import 'passkey_client_stub.dart'
-    if (dart.library.html) 'passkey_client_web.dart' as impl;
+    if (dart.library.html) 'passkey_client_web.dart'
+    if (dart.library.io) 'passkey_client_native.dart' as impl;
 
 Future<Map<String, dynamic>> createPasskeyCredential(
   Map<String, dynamic> options,

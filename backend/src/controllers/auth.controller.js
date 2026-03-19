@@ -51,13 +51,17 @@ const passkeyRegisterVerify = asyncHandler(async (req, res) => {
 });
 
 const passkeyLoginOptions = asyncHandler(async (req, res) => {
-  const options = await getAuthenticationOptionsForUsername(req.body.username);
+  const options = await getAuthenticationOptionsForUsername(
+    req.body.username,
+    req.body.teamNumber,
+  );
   res.json({ success: true, options });
 });
 
 const passkeyLoginVerify = asyncHandler(async (req, res) => {
   const result = await verifyAuthenticationForUsername(
     req.body.username,
+    req.body.teamNumber,
     req.body.response,
   );
   res.json({ success: true, ...result });

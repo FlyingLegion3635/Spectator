@@ -1,9 +1,8 @@
 PODS:
   - cloud_functions (6.0.1):
-    - Firebase/CoreOnly (~> 12.2.0)
-    - Firebase/Functions (~> 12.2.0)
+    - Firebase/Functions (= 12.2.0)
     - firebase_core
-    - FlutterMacOS
+    - Flutter
   - Firebase/Auth (12.2.0):
     - Firebase/CoreOnly
     - FirebaseAuth (~> 12.2.0)
@@ -13,13 +12,12 @@ PODS:
     - Firebase/CoreOnly
     - FirebaseFunctions (~> 12.2.0)
   - firebase_auth (6.0.2):
-    - Firebase/Auth (~> 12.2.0)
-    - Firebase/CoreOnly (~> 12.2.0)
+    - Firebase/Auth (= 12.2.0)
     - firebase_core
-    - FlutterMacOS
+    - Flutter
   - firebase_core (4.1.0):
-    - Firebase/CoreOnly (~> 12.2.0)
-    - FlutterMacOS
+    - Firebase/CoreOnly (= 12.2.0)
+    - Flutter
   - FirebaseAppCheckInterop (12.2.0)
   - FirebaseAuth (12.2.0):
     - FirebaseAppCheckInterop (~> 12.2.0)
@@ -49,7 +47,7 @@ PODS:
     - GTMSessionFetcher/Core (< 6.0, >= 3.4)
   - FirebaseMessagingInterop (12.2.0)
   - FirebaseSharedSwift (12.2.0)
-  - FlutterMacOS (1.0.0)
+  - Flutter (1.0.0)
   - GoogleUtilities/AppDelegateSwizzler (8.1.0):
     - GoogleUtilities/Environment
     - GoogleUtilities/Logger
@@ -72,19 +70,24 @@ PODS:
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
   - GTMSessionFetcher/Core (5.0.0)
+  - RecaptchaInterop (101.0.0)
   - share_plus (0.0.1):
-    - FlutterMacOS
+    - Flutter
   - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
 
 DEPENDENCIES:
-  - cloud_functions (from `Flutter/ephemeral/.symlinks/plugins/cloud_functions/macos`)
-  - firebase_auth (from `Flutter/ephemeral/.symlinks/plugins/firebase_auth/macos`)
-  - firebase_core (from `Flutter/ephemeral/.symlinks/plugins/firebase_core/macos`)
-  - FlutterMacOS (from `Flutter/ephemeral`)
-  - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
-  - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
+  - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
+  - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
+  - Flutter (from `Flutter`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -100,26 +103,29 @@ SPEC REPOS:
     - FirebaseSharedSwift
     - GoogleUtilities
     - GTMSessionFetcher
+    - RecaptchaInterop
 
 EXTERNAL SOURCES:
   cloud_functions:
-    :path: Flutter/ephemeral/.symlinks/plugins/cloud_functions/macos
+    :path: ".symlinks/plugins/cloud_functions/ios"
   firebase_auth:
-    :path: Flutter/ephemeral/.symlinks/plugins/firebase_auth/macos
+    :path: ".symlinks/plugins/firebase_auth/ios"
   firebase_core:
-    :path: Flutter/ephemeral/.symlinks/plugins/firebase_core/macos
-  FlutterMacOS:
-    :path: Flutter/ephemeral
+    :path: ".symlinks/plugins/firebase_core/ios"
+  Flutter:
+    :path: Flutter
   share_plus:
-    :path: Flutter/ephemeral/.symlinks/plugins/share_plus/macos
+    :path: ".symlinks/plugins/share_plus/ios"
   shared_preferences_foundation:
-    :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  sqflite_darwin:
+    :path: ".symlinks/plugins/sqflite_darwin/darwin"
 
 SPEC CHECKSUMS:
-  cloud_functions: a85b563a86ff8b6733b4a83d030a50070634e100
+  cloud_functions: d9462da16e3b799d2a9d1dea4ae42fe7cd6e76e2
   Firebase: 26f6f8d460603af3df970ad505b16b15f5e2e9a1
-  firebase_auth: fc66157c6407496a33ea1f4baef45aa3c2728b52
-  firebase_core: a8d3b82b0a87bd1d0ebc21e686b37e939c56e6e1
+  firebase_auth: 9c0ce237c3bdc34c85fec8b87575beda143adba0
+  firebase_core: 3ff52146406557dddd01d570e807e203ec7e1302
   FirebaseAppCheckInterop: a1b2598c64c5a8c42fd6f6a1c3d0938ae4324678
   FirebaseAuth: 059c11702bdb759bb49b6c7ec6ff67abf21f39c4
   FirebaseAuthInterop: 217702acd4cc6baa98ba9d6c054532e0de0b8a16
@@ -129,12 +135,14 @@ SPEC CHECKSUMS:
   FirebaseFunctions: fc68f7e566da9b2eb714f66bc9e633d3111da7fb
   FirebaseMessagingInterop: 913e21aa8526740cd2ac17b30e89dd3e56ff112e
   FirebaseSharedSwift: 52d868d4c269fcb4e4e1310c548435a9c1f46e25
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   GTMSessionFetcher: 02d6e866e90bc236f48a703a041dfe43e6221a29
-  share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
+  RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
+  share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
+  sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 915e58fd71f05ae99fabdd8ac2991c68108b3464
 
 COCOAPODS: 1.16.2

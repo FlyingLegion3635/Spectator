@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spectator/screens/home/color.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/theme/appearance.dart';
 import 'package:spectator/widgets/color_picker_dialog.dart';
 

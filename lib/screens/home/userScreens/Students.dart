@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
 
 class Students extends StatefulWidget {

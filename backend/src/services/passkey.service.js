@@ -44,20 +44,25 @@ function consumeChallenge(key, type) {
   return challenge;
 }
 
-async function getUserByUsername(username) {
+async function getUserByUsername(username, teamNumber) {
   const usernameNormalized = usernameToKey(username);
+  const normalizedTeam = String(teamNumber || '').trim();
 
-  const query = await db
+  let q = db
     .collection(COLLECTIONS.USERS)
-    .where('usernameNormalized', '==', usernameNormalized)
-    .limit(1)
-    .get();
+    .where('usernameNormalized', '==', usernameNormalized);
 
-  if (query.empty) {
+  if (normalizedTeam) {
+    q = q.where('teamNumber', '==', normalizedTeam);
+  }
+
+  const result = await q.limit(1).get();
+
+  if (result.empty) {
     throw new ApiError(404, 'User not found for passkey login');
   }
 
-  const doc = query.docs[0];
+  const doc = result.docs[0];
   const user = serializeDoc(doc);
   return { user, docRef: doc.ref };
 }
@@ -164,10 +169,10 @@ async function verifyRegistrationForUser(userId, response) {
   return { verified: true, passkeyId: nextPasskey.id };
 }
 
-async function getAuthenticationOptionsForUsername(username) {
+async function getAuthenticationOptionsForUsername(username, teamNumber) {
   assertPasskeysEnabled();
 
-  const { user } = await getUserByUsername(username);
+  const { user } = await getUserByUsername(username, teamNumber);
   const passkeys = Array.isArray(user.passkeys) ? user.passkeys : [];
 
   if (passkeys.length === 0) {
@@ -190,10 +195,10 @@ async function getAuthenticationOptionsForUsername(username) {
   return options;
 }
 
-async function verifyAuthenticationForUsername(username, response) {
+async function verifyAuthenticationForUsername(username, teamNumber, response) {
   assertPasskeysEnabled();
 
-  const { user, docRef } = await getUserByUsername(username);
+  const { user, docRef } = await getUserByUsername(username, teamNumber);
   const challenge = consumeChallenge(usernameToKey(user.username), 'login');
 
   if (challenge.userId !== user.id) {

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
 
 enum _DataView { pit, match }
@@ -29,9 +29,10 @@ class _DataPageState extends State<DataPage> {
   Map<String, String>? _teamInfo;
   final Map<String, Map<String, String>> _teamDetailsByNumber = {};
   final Set<String> _teamDetailsLoading = {};
-  bool _searchAllTeams = false;
+  bool _searchAllTeams = true;
   bool _teamDataPublic = false;
   bool _visibilityLoading = false;
+  final GlobalKey _exportButtonKey = GlobalKey();
 
   Color _onColor(Color background, {double alpha = 1.0}) {
     final dark =
@@ -234,6 +235,8 @@ class _DataPageState extends State<DataPage> {
       });
     }
 
+    await backend.ready;
+
     try {
       if (backend.isAuthenticated) {
         await backend.fetchDatasheets();
@@ -248,7 +251,10 @@ class _DataPageState extends State<DataPage> {
 
       _error = '';
     } catch (error) {
-      _error = _errorText(error);
+      // Only show error if there's no cached data to display.
+      if (backend.scoutingDataList.isEmpty && backend.matchDataList.isEmpty) {
+        _error = _errorText(error);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -556,6 +562,14 @@ class _DataPageState extends State<DataPage> {
     nameController.dispose();
   }
 
+  Rect? _exportButtonRect() {
+    final box =
+        _exportButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final offset = box.localToGlobal(Offset.zero);
+    return offset & box.size;
+  }
+
   Future<void> _exportCsv() async {
     try {
       final export = await backend.exportSelectedDatasheetCsv();
@@ -564,6 +578,7 @@ class _DataPageState extends State<DataPage> {
       final downloaded = await backend.downloadCsvFiles(
         pitCsv: export['pitCsv'] ?? '',
         matchCsv: export['matchCsv'] ?? '',
+        sharePositionOrigin: _exportButtonRect(),
       );
 
       if (downloaded) {
@@ -756,95 +771,234 @@ class _DataPageState extends State<DataPage> {
     final id = entry['id'] ?? '';
     if (id.isEmpty) return;
 
-    final teamNumberController = TextEditingController(
-      text: entry['teamNumber'] ?? '',
-    );
-    final teamNameController = TextEditingController(
-      text: entry['teamName'] ?? '',
-    );
-    final hpController = TextEditingController(
-      text: entry['humanPlayerConfidence'] ?? '',
-    );
-    final driveController = TextEditingController(
-      text: entry['driveTrain'] ?? '',
-    );
-    final scoringController = TextEditingController(
-      text: entry['mainScoringPotential'] ?? '',
-    );
-    final autoController = TextEditingController(
-      text: entry['pointsInAutonomous'] ?? '',
-    );
-    final teleopController = TextEditingController(
-      text: entry['teleOperatedCapabilities'] ?? '',
-    );
+    // Parse existing customResponses from the entry.
+    Map<String, dynamic> existingCustom = {};
+    try {
+      final raw = entry['customResponses'] ?? '{}';
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        existingCustom = Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+
+    // Fixed fields — always present.
+    final fixedControllers = <String, TextEditingController>{
+      'teamNumber': TextEditingController(text: entry['teamNumber'] ?? ''),
+      'teamName': TextEditingController(text: entry['teamName'] ?? ''),
+      'humanPlayerConfidence': TextEditingController(
+        text: entry['humanPlayerConfidence'] ?? '',
+      ),
+      'driveTrain': TextEditingController(text: entry['driveTrain'] ?? ''),
+      'mainScoringPotential': TextEditingController(
+        text: entry['mainScoringPotential'] ?? '',
+      ),
+      'pointsInAutonomous': TextEditingController(
+        text: entry['pointsInAutonomous'] ?? '',
+      ),
+      'teleOperatedCapabilities': TextEditingController(
+        text: entry['teleOperatedCapabilities'] ?? '',
+      ),
+    };
+
+    // Build controllers/values for template custom fields.
+    final customTextControllers = <String, TextEditingController>{};
+    final customValues = <String, dynamic>{};
+
+    for (final field in backend.pitTemplateFields) {
+      final key = '${field['key'] ?? ''}'.trim();
+      final type = '${field['type'] ?? 'text'}';
+      if (key.isEmpty || type == 'separator' || type == 'title') continue;
+
+      if (type == 'text') {
+        customTextControllers[key] = TextEditingController(
+          text: '${existingCustom[key] ?? ''}',
+        );
+      } else if (type == 'checkbox') {
+        final val = existingCustom[key];
+        customValues[key] = val == true || val == 'true';
+      } else if (type == 'select') {
+        customValues[key] = '${existingCustom[key] ?? ''}';
+      }
+    }
+
+    final screenWidth = MediaQuery.of(context).size.width;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Edit Pit Entry'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _field('Team Number', teamNumberController),
-                _field('Team Name', teamNameController),
-                _field('Human Player Confidence', hpController),
-                _field('Drive Train', driveController),
-                _field('Main Scoring Potential', scoringController),
-                _field('Points in Autonomous', autoController),
-                _field('Tele-operated Capabilities', teleopController),
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final templateWidgets = <Widget>[];
+            for (final field in backend.pitTemplateFields) {
+              final key = '${field['key'] ?? ''}'.trim();
+              final label = '${field['label'] ?? key}';
+              final type = '${field['type'] ?? 'text'}';
+
+              if (type == 'separator') {
+                templateWidgets.add(
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(thickness: 1),
+                  ),
+                );
+                continue;
+              }
+              if (type == 'title') {
+                templateWidgets.add(
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 4),
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                );
+                continue;
+              }
+              if (key.isEmpty) continue;
+
+              if (type == 'checkbox') {
+                templateWidgets.add(
+                  CheckboxListTile(
+                    title: Text(label),
+                    value: (customValues[key] as bool?) ?? false,
+                    onChanged: (v) {
+                      setDialogState(() => customValues[key] = v ?? false);
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                );
+              } else if (type == 'select') {
+                final options = (field['options'] as List<dynamic>? ?? [])
+                    .map((e) => '$e')
+                    .where((e) => e.isNotEmpty)
+                    .toList();
+                final current = '${customValues[key] ?? ''}';
+                final effectiveValue =
+                    options.contains(current) ? current : null;
+
+                templateWidgets.add(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: DropdownButtonFormField<String>(
+                      value: effectiveValue,
+                      decoration: InputDecoration(
+                        labelText: label,
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: options
+                          .map(
+                            (o) =>
+                                DropdownMenuItem(value: o, child: Text(o)),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        setDialogState(() => customValues[key] = v ?? '');
+                      },
+                    ),
+                  ),
+                );
+              } else {
+                templateWidgets.add(
+                  _field(label, customTextControllers[key]!),
+                );
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Edit Pit Entry'),
+              content: SizedBox(
+                width: screenWidth > 600 ? 520 : screenWidth * 0.85,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _field('Team Number', fixedControllers['teamNumber']!),
+                      _field('Team Name', fixedControllers['teamName']!),
+                      _field(
+                        'Human Player Confidence',
+                        fixedControllers['humanPlayerConfidence']!,
+                      ),
+                      _field('Drive Train', fixedControllers['driveTrain']!),
+                      _field(
+                        'Main Scoring Potential',
+                        fixedControllers['mainScoringPotential']!,
+                      ),
+                      _field(
+                        'Points in Autonomous',
+                        fixedControllers['pointsInAutonomous']!,
+                      ),
+                      _field(
+                        'Tele-operated Capabilities',
+                        fixedControllers['teleOperatedCapabilities']!,
+                      ),
+                      if (templateWidgets.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(thickness: 2),
+                        ),
+                        ...templateWidgets,
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Save'),
+                ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Save'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
 
-    if (confirmed != true) {
-      teamNumberController.dispose();
-      teamNameController.dispose();
-      hpController.dispose();
-      driveController.dispose();
-      scoringController.dispose();
-      autoController.dispose();
-      teleopController.dispose();
-      return;
+    // Collect values before disposing anything.
+    final updated = <String, String>{};
+    for (final e in fixedControllers.entries) {
+      updated[e.key] = e.value.text;
     }
 
-    final updated = {
-      'teamNumber': teamNumberController.text,
-      'teamName': teamNameController.text,
-      'humanPlayerConfidence': hpController.text,
-      'driveTrain': driveController.text,
-      'mainScoringPotential': scoringController.text,
-      'pointsInAutonomous': autoController.text,
-      'teleOperatedCapabilities': teleopController.text,
-    };
+    final customResponses = <String, dynamic>{};
+    for (final field in backend.pitTemplateFields) {
+      final key = '${field['key'] ?? ''}'.trim();
+      final type = '${field['type'] ?? 'text'}';
+      if (key.isEmpty || type == 'separator' || type == 'title') continue;
+
+      if (type == 'text') {
+        customResponses[key] = customTextControllers[key]?.text ?? '';
+      } else {
+        customResponses[key] = customValues[key] ?? '';
+      }
+    }
+    updated['customResponses'] = jsonEncode(customResponses);
+
+    // Now dispose all controllers.
+    for (final c in fixedControllers.values) {
+      c.dispose();
+    }
+    for (final c in customTextControllers.values) {
+      c.dispose();
+    }
+
+    if (confirmed != true) return;
 
     final success = await backend.updatePitEntry(
       context,
       id: id,
       updated: updated,
     );
-
-    teamNumberController.dispose();
-    teamNameController.dispose();
-    hpController.dispose();
-    driveController.dispose();
-    scoringController.dispose();
-    autoController.dispose();
-    teleopController.dispose();
 
     if (success && mounted) {
       setState(() {});
@@ -978,7 +1132,7 @@ class _DataPageState extends State<DataPage> {
       'calculatedPoints': _safeInt(pointsController.text),
       'autoClimb': autoClimb,
       'climbLevel': climbLevel,
-      'scoutedAt': entry['scoutedAt'] ?? DateTime.now().toIso8601String(),
+      'scoutedAt': entry['scoutedAt'] ?? DateTime.now().toUtc().toIso8601String(),
     };
 
     final success = await backend.updateMatchEntry(
@@ -1048,20 +1202,137 @@ class _DataPageState extends State<DataPage> {
       });
   }
 
+  Widget _buildMatchGroupedList(List<Map<String, String>> entries) {
+    if (entries.isEmpty) {
+      return ListView(
+        children: [
+          SizedBox(height: measurements.extraLargePadding),
+          Center(
+            child: Text(
+              'No data found',
+              style: TextStyle(color: colors.baseColors[1]),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Group entries by team number, preserving sorted order.
+    final Map<String, List<Map<String, String>>> byTeam = {};
+    for (final entry in entries) {
+      final team = '${entry['teamNumber'] ?? ''}';
+      byTeam.putIfAbsent(team, () => []).add(entry);
+    }
+    // Sort each team's matches by match number.
+    for (final matches in byTeam.values) {
+      matches.sort((a, b) {
+        final left = int.tryParse('${a['matchNumber'] ?? ''}') ?? 0;
+        final right = int.tryParse('${b['matchNumber'] ?? ''}') ?? 0;
+        return left.compareTo(right);
+      });
+    }
+    final sortedTeams = byTeam.keys.toList()
+      ..sort(
+        (a, b) =>
+            (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0),
+      );
+
+    return ListView.builder(
+      itemCount: sortedTeams.length,
+      itemBuilder: (context, index) {
+        final teamNumber = sortedTeams[index];
+        final teamMatches = byTeam[teamNumber]!;
+        final teamDetails = _teamDetailsByNumber[teamNumber];
+        final cardColor =
+            Theme.of(context).cardTheme.color ?? colors.mainColors[2];
+        final titleColor = _onColor(cardColor);
+        final subtitleColor = _onColor(cardColor, alpha: 0.74);
+
+        final teamLabel =
+            teamDetails != null &&
+                (teamDetails['teamLabel'] ?? '').isNotEmpty
+            ? '${teamDetails['teamLabel']} - ${teamDetails['nickname'] ?? ''}'
+            : teamDetails != null
+            ? 'Team $teamNumber - ${teamDetails['nickname'] ?? ''}'
+            : 'Team $teamNumber';
+
+        return Card(
+          color: cardColor,
+          margin: EdgeInsets.symmetric(
+            horizontal: measurements.largePadding,
+            vertical: 5,
+          ),
+          child: ExpansionTile(
+            leading:
+                teamDetails != null &&
+                    (teamDetails['logoUrl'] ?? '').isNotEmpty
+                ? Image.network(
+                    teamDetails['logoUrl']!,
+                    width: 36,
+                    height: 36,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.groups),
+                  )
+                : const Icon(Icons.groups),
+            title: Text(teamLabel, style: TextStyle(color: titleColor)),
+            subtitle: Text(
+              '${teamMatches.length} match${teamMatches.length == 1 ? '' : 'es'}',
+              style: TextStyle(color: subtitleColor),
+            ),
+            children: [
+              for (final entry in teamMatches)
+                _buildMatchEntryTile(entry, cardColor, titleColor, subtitleColor),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMatchEntryTile(
+    Map<String, String> entry,
+    Color cardColor,
+    Color titleColor,
+    Color subtitleColor,
+  ) {
+    final version = entry['version'] ?? '1';
+    final versionCount = entry['versionCount'] ?? '0';
+    return Card(
+      color: cardColor.withValues(alpha: 0.6),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ExpansionTile(
+        title: Text(
+          'Match ${entry['matchNumber']} — ${entry['allianceColor']} Alliance',
+          style: TextStyle(color: titleColor, fontSize: 14),
+        ),
+        subtitle: Text(
+          'Points: ${entry['calculatedPoints']} | Shots: ${entry['shotsAttempted']} | Acc: ${entry['accuracy']}  (v$version, rev: $versionCount)',
+          style: TextStyle(color: subtitleColor, fontSize: 12),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.history, size: 20),
+              onPressed: () => _openMatchVersionHistory(entry),
+            ),
+            if (backend.canMakeRevisions)
+              IconButton(
+                icon: const Icon(Icons.edit, size: 20),
+                onPressed: () => _openMatchEditDialog(entry),
+              ),
+          ],
+        ),
+        children: _buildMatchDetailTiles(entry, cardColor),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredPitEntries = backend.getFilteredData();
     final filteredMatchEntries = backend.getFilteredMatchData();
-    final activeEntries = _activeView == _DataView.pit
-        ? filteredPitEntries
-        : filteredMatchEntries;
-    Map<String, String>? resolvedTeamInfo = _teamInfo;
-    if (resolvedTeamInfo == null && activeEntries.isNotEmpty) {
-      final firstTeam = '${activeEntries.first['teamNumber'] ?? ''}'.trim();
-      if (firstTeam.isNotEmpty) {
-        resolvedTeamInfo = _teamDetailsByNumber[firstTeam];
-      }
-    }
+    final Map<String, String>? resolvedTeamInfo = _teamInfo;
 
     return Scaffold(
       body: Column(
@@ -1121,6 +1392,7 @@ class _DataPageState extends State<DataPage> {
                   if (backend.canExportData) ...[
                     const SizedBox(width: 4),
                     IconButton(
+                      key: _exportButtonKey,
                       onPressed: _exportCsv,
                       icon: const Icon(Icons.download),
                       tooltip: 'Export CSV',
@@ -1291,168 +1563,127 @@ class _DataPageState extends State<DataPage> {
                         ),
                       ],
                     )
-                  : activeEntries.isEmpty
-                  ? ListView(
-                      children: [
-                        SizedBox(height: measurements.extraLargePadding),
-                        Center(
-                          child: Text(
-                            'No data found',
-                            style: TextStyle(color: colors.baseColors[1]),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView.builder(
-                      itemCount: activeEntries.length,
-                      itemBuilder: (itemContext, index) {
-                        final entry = activeEntries[index];
-                        final version = entry['version'] ?? '1';
-                        final versionCount = entry['versionCount'] ?? '0';
-
-                        if (_activeView == _DataView.pit) {
-                          final teamNumber = '${entry['teamNumber'] ?? ''}';
-                          final teamDetails = _teamDetailsByNumber[teamNumber];
-                          final relatedMatches = _relatedMatchesForTeam(
-                            teamNumber,
-                          );
-                          final cardColor =
-                              Theme.of(context).cardTheme.color ??
-                              colors.mainColors[2];
-                          final titleColor = _onColor(cardColor);
-                          final subtitleColor = _onColor(
-                            cardColor,
-                            alpha: 0.74,
-                          );
-
-                          return Card(
-                            color: cardColor,
-                            margin: EdgeInsets.symmetric(
-                              horizontal: measurements.largePadding,
-                              vertical: 5,
+                  : _activeView == _DataView.pit
+                  ? (filteredPitEntries.isEmpty
+                      ? ListView(
+                          children: [
+                            SizedBox(height: measurements.extraLargePadding),
+                            Center(
+                              child: Text(
+                                'No data found',
+                                style: TextStyle(color: colors.baseColors[1]),
+                              ),
                             ),
-                            child: ExpansionTile(
-                              title: Text(
-                                teamDetails == null
-                                    ? 'Team $teamNumber'
-                                    : '${teamDetails['teamLabel']?.isNotEmpty == true ? teamDetails['teamLabel'] : 'Team $teamNumber'} - ${teamDetails['nickname'] ?? ''}',
-                                style: TextStyle(color: titleColor),
+                          ],
+                        )
+                      : ListView.builder(
+                          itemCount: filteredPitEntries.length,
+                          itemBuilder: (itemContext, index) {
+                            final entry = filteredPitEntries[index];
+                            final version = entry['version'] ?? '1';
+                            final versionCount = entry['versionCount'] ?? '0';
+                            final teamNumber =
+                                '${entry['teamNumber'] ?? ''}';
+                            final teamDetails =
+                                _teamDetailsByNumber[teamNumber];
+                            final relatedMatches =
+                                _relatedMatchesForTeam(teamNumber);
+                            final cardColor =
+                                Theme.of(context).cardTheme.color ??
+                                colors.mainColors[2];
+                            final titleColor = _onColor(cardColor);
+                            final subtitleColor =
+                                _onColor(cardColor, alpha: 0.74);
+
+                            return Card(
+                              color: cardColor,
+                              margin: EdgeInsets.symmetric(
+                                horizontal: measurements.largePadding,
+                                vertical: 5,
                               ),
-                              subtitle: Text(
-                                '${entry['teamName']} (v$version, revisions: $versionCount)',
-                                style: TextStyle(color: subtitleColor),
-                              ),
-                              leading:
-                                  teamDetails != null &&
-                                      (teamDetails['logoUrl'] ?? '').isNotEmpty
-                                  ? Image.network(
-                                      teamDetails['logoUrl']!,
-                                      width: 36,
-                                      height: 36,
-                                      errorBuilder: (_, __, ___) =>
-                                          Icon(Icons.shield),
-                                    )
-                                  : const Icon(Icons.shield),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.history),
-                                    onPressed: () =>
-                                        _openPitVersionHistory(entry),
-                                  ),
-                                  if (backend.canMakeRevisions)
+                              child: ExpansionTile(
+                                title: Text(
+                                  teamDetails == null
+                                      ? 'Team $teamNumber'
+                                      : '${teamDetails['teamLabel']?.isNotEmpty == true ? teamDetails['teamLabel'] : 'Team $teamNumber'} - ${teamDetails['nickname'] ?? ''}',
+                                  style: TextStyle(color: titleColor),
+                                ),
+                                subtitle: Text(
+                                  '${entry['teamName']} (v$version, revisions: $versionCount)',
+                                  style: TextStyle(color: subtitleColor),
+                                ),
+                                leading:
+                                    teamDetails != null &&
+                                        (teamDetails['logoUrl'] ?? '')
+                                            .isNotEmpty
+                                    ? Image.network(
+                                        teamDetails['logoUrl']!,
+                                        width: 36,
+                                        height: 36,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.shield),
+                                      )
+                                    : const Icon(Icons.shield),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
                                     IconButton(
-                                      icon: const Icon(Icons.edit),
+                                      icon: const Icon(Icons.history),
                                       onPressed: () =>
-                                          _openPitEditDialog(entry),
+                                          _openPitVersionHistory(entry),
                                     ),
-                                ],
-                              ),
-                              children: [
-                                if (relatedMatches.isNotEmpty)
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16.0,
-                                          vertical: 6.0,
-                                        ),
-                                        child: Text(
-                                          'Related Match Data',
-                                          style: TextStyle(
-                                            color: titleColor,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                    if (backend.canMakeRevisions)
+                                      IconButton(
+                                        icon: const Icon(Icons.edit),
+                                        onPressed: () =>
+                                            _openPitEditDialog(entry),
                                       ),
-                                      for (final match in relatedMatches)
-                                        ListTile(
-                                          dense: true,
-                                          title: Text(
-                                            'Match ${match['matchNumber']} (${match['allianceColor']})',
-                                            style: TextStyle(color: titleColor),
+                                  ],
+                                ),
+                                children: [
+                                  if (relatedMatches.isNotEmpty)
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16.0,
+                                            vertical: 6.0,
                                           ),
-                                          subtitle: Text(
-                                            'Points: ${match['calculatedPoints']} | Accuracy: ${match['accuracy']} | Shots: ${match['shotsAttempted']}',
+                                          child: Text(
+                                            'Related Match Data',
                                             style: TextStyle(
-                                              color: subtitleColor,
+                                              color: titleColor,
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
                                         ),
-                                      const Divider(),
-                                    ],
-                                  ),
-                                ..._buildPitDetailTiles(entry, cardColor),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final cardColor =
-                            Theme.of(context).cardTheme.color ??
-                            colors.mainColors[2];
-                        final titleColor = _onColor(cardColor);
-                        final subtitleColor = _onColor(cardColor, alpha: 0.74);
-
-                        return Card(
-                          color: cardColor,
-                          margin: EdgeInsets.symmetric(
-                            horizontal: measurements.largePadding,
-                            vertical: 5,
-                          ),
-                          child: ExpansionTile(
-                            title: Text(
-                              'Match ${entry['matchNumber']} - Team ${entry['teamNumber']}',
-                              style: TextStyle(color: titleColor),
-                            ),
-                            subtitle: Text(
-                              '${entry['allianceColor']} alliance (v$version, revisions: $versionCount)',
-                              style: TextStyle(color: subtitleColor),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.history),
-                                  onPressed: () =>
-                                      _openMatchVersionHistory(entry),
-                                ),
-                                if (backend.canMakeRevisions)
-                                  IconButton(
-                                    icon: const Icon(Icons.edit),
-                                    onPressed: () =>
-                                        _openMatchEditDialog(entry),
-                                  ),
-                              ],
-                            ),
-                            children: _buildMatchDetailTiles(entry, cardColor),
-                          ),
-                        );
-                      },
-                    ),
+                                        for (final match in relatedMatches)
+                                          ListTile(
+                                            dense: true,
+                                            title: Text(
+                                              'Match ${match['matchNumber']} (${match['allianceColor']})',
+                                              style:
+                                                  TextStyle(color: titleColor),
+                                            ),
+                                            subtitle: Text(
+                                              'Points: ${match['calculatedPoints']} | Accuracy: ${match['accuracy']} | Shots: ${match['shotsAttempted']}',
+                                              style: TextStyle(
+                                                color: subtitleColor,
+                                              ),
+                                            ),
+                                          ),
+                                        const Divider(),
+                                      ],
+                                    ),
+                                  ..._buildPitDetailTiles(entry, cardColor),
+                                ],
+                              ),
+                            );
+                          },
+                        ))
+                  : _buildMatchGroupedList(filteredMatchEntries),
             ),
           ),
         ],

@@ -38,6 +38,7 @@ class Functions {
 
   String? _authToken;
   String? _selectedEventKey;
+  String _matchesStatusMessage = '';
   String? _username;
   String? _email;
   String? _avatarUrl;
@@ -54,6 +55,17 @@ class Functions {
   static const _sessionAvatarKey = 'spectator.auth.avatar';
   static const _offlinePitQueueKey = 'spectator.offline.pitQueue';
   static const _offlineMatchQueueKey = 'spectator.offline.matchQueue';
+  static const _cacheEventsListKey = 'spectator.cache.eventsList';
+  static const _cacheEventNameToKeyKey = 'spectator.cache.eventNameToKey';
+  static const _cacheTeamsListKey = 'spectator.cache.teamsList';
+  static const _cacheSelectedEventKey = 'spectator.cache.selectedEventKey';
+  static const _cachePitTemplateKey = 'spectator.cache.pitTemplate';
+  static const _cacheDatasheetsKey = 'spectator.cache.datasheets';
+  static const _cacheAboutProfileKey = 'spectator.cache.aboutProfile';
+  static const _cacheMatchesStatusKey = 'spectator.cache.matchesStatus';
+  static const _cachePitEntriesKey = 'spectator.cache.pitEntries';
+  static const _cacheMatchEntriesKey = 'spectator.cache.matchEntries';
+  static const _cacheTeamNamesKey = 'spectator.cache.teamNames';
 
   bool signupEnabled = true;
   bool passkeysEnabled = false;
@@ -64,6 +76,23 @@ class Functions {
   String get avatarUrl => _avatarUrl ?? '';
   String? get teamNumber => _teamNumber;
   String get role => _role;
+  String get selectedEventKey => _selectedEventKey ?? '';
+  String get matchesStatusMessage => _matchesStatusMessage;
+
+  String get selectedEventName {
+    final key = _selectedEventKey;
+    if (key == null || key.isEmpty) {
+      return '';
+    }
+
+    for (final entry in _eventNameToKey.entries) {
+      if (entry.value == key) {
+        return entry.key;
+      }
+    }
+
+    return key.toUpperCase();
+  }
 
   bool get isTeamManager => _role == 'team_manager';
   bool get isScoutManager => _role == 'scout_manager';
@@ -77,6 +106,9 @@ class Functions {
   bool get canCreateDatasheet => isTeamManager;
   bool get canRestoreVersions => isTeamManager;
   bool get canExportData => isTeamManager || isScoutManager;
+
+  /// Set after submit calls — true when data was queued offline instead of sent.
+  bool lastSubmitWasOffline = false;
   bool get canMakeRevisions => isAuthenticated;
 
   List<dynamic> appSettings = [14.0, false, false, false];
@@ -109,6 +141,9 @@ class Functions {
   List<Map<String, dynamic>> datasheets = [];
   String? selectedDatasheetId;
 
+  /// Cached team number → nickname for offline autofill.
+  final Map<String, String> cachedTeamNames = {};
+
   Map<String, dynamic> aboutProfile = {};
 
   List<List<dynamic>> matchScoutingData = [];
@@ -118,8 +153,9 @@ class Functions {
     _bootstrapped = true;
 
     try {
-      await refreshAuthConfig();
       await _restoreSession();
+      await _restoreCache();
+      await refreshAuthConfig();
 
       if (isAuthenticated) {
         await _refreshCurrentUser();
@@ -130,7 +166,7 @@ class Functions {
       await fetchMatchEntries();
       await fetchAboutProfile();
     } catch (_) {
-      // Screen-level handlers display fallback errors.
+      // Cache data already loaded — screens show stale data rather than empty.
     }
   }
 
@@ -169,6 +205,165 @@ class Functions {
     _avatarUrl = (prefs.getString(_sessionAvatarKey) ?? '').trim();
     appSettings[2] = isTeamManager || isScoutManager;
     appSettings[3] = true;
+  }
+
+  Future<void> _restoreCache() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final rawEvents = prefs.getString(_cacheEventsListKey);
+    if (rawEvents != null) {
+      try {
+        final decoded = jsonDecode(rawEvents);
+        if (decoded is List) {
+          eventsList = decoded.map((e) => '$e').toList();
+        }
+      } catch (_) {}
+    }
+
+    final rawMap = prefs.getString(_cacheEventNameToKeyKey);
+    if (rawMap != null) {
+      try {
+        final decoded = jsonDecode(rawMap);
+        if (decoded is Map) {
+          _eventNameToKey.clear();
+          decoded.forEach((k, v) => _eventNameToKey['$k'] = '$v');
+        }
+      } catch (_) {}
+    }
+
+    final rawSelectedEvent = prefs.getString(_cacheSelectedEventKey) ?? '';
+    if (rawSelectedEvent.isNotEmpty) {
+      _selectedEventKey = rawSelectedEvent;
+    }
+
+    _matchesStatusMessage = prefs.getString(_cacheMatchesStatusKey) ?? '';
+
+    final rawTeams = prefs.getString(_cacheTeamsListKey);
+    if (rawTeams != null) {
+      try {
+        final decoded = jsonDecode(rawTeams);
+        if (decoded is List) {
+          teamsList = decoded
+              .whereType<List>()
+              .map((row) => row.map((e) => (e as num).toInt()).toList())
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    final rawTemplate = prefs.getString(_cachePitTemplateKey);
+    if (rawTemplate != null) {
+      try {
+        final decoded = jsonDecode(rawTemplate);
+        if (decoded is List) {
+          pitTemplateFields =
+              decoded.whereType<Map<String, dynamic>>().toList();
+        }
+      } catch (_) {}
+    }
+
+    final rawSheets = prefs.getString(_cacheDatasheetsKey);
+    if (rawSheets != null) {
+      try {
+        final decoded = jsonDecode(rawSheets);
+        if (decoded is List) {
+          datasheets = decoded.whereType<Map<String, dynamic>>().toList();
+          if (datasheets.isNotEmpty && selectedDatasheetId == null) {
+            selectedDatasheetId = '${datasheets.first['id']}';
+          }
+        }
+      } catch (_) {}
+    }
+
+    final rawAbout = prefs.getString(_cacheAboutProfileKey);
+    if (rawAbout != null) {
+      try {
+        final decoded = jsonDecode(rawAbout);
+        if (decoded is Map<String, dynamic>) {
+          aboutProfile = decoded;
+        }
+      } catch (_) {}
+    }
+
+    final rawPitEntries = prefs.getString(_cachePitEntriesKey);
+    if (rawPitEntries != null) {
+      try {
+        final decoded = jsonDecode(rawPitEntries);
+        if (decoded is List) {
+          scoutingDataList = decoded
+              .whereType<Map<String, dynamic>>()
+              .map((e) => e.map((k, v) => MapEntry(k, '$v')))
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    final rawMatchEntries = prefs.getString(_cacheMatchEntriesKey);
+    if (rawMatchEntries != null) {
+      try {
+        final decoded = jsonDecode(rawMatchEntries);
+        if (decoded is List) {
+          matchDataList = decoded
+              .whereType<Map<String, dynamic>>()
+              .map((e) => e.map((k, v) => MapEntry(k, '$v')))
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    final rawTeamNames = prefs.getString(_cacheTeamNamesKey);
+    if (rawTeamNames != null) {
+      try {
+        final decoded = jsonDecode(rawTeamNames);
+        if (decoded is Map) {
+          cachedTeamNames.clear();
+          decoded.forEach((k, v) => cachedTeamNames['$k'] = '$v');
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _persistEventsCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheEventsListKey, jsonEncode(eventsList));
+    await prefs.setString(
+      _cacheEventNameToKeyKey,
+      jsonEncode(_eventNameToKey),
+    );
+    await prefs.setString(_cacheSelectedEventKey, _selectedEventKey ?? '');
+    await prefs.setString(_cacheTeamsListKey, jsonEncode(teamsList));
+    await prefs.setString(_cacheMatchesStatusKey, _matchesStatusMessage);
+  }
+
+  Future<void> _persistEntriesCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _cachePitEntriesKey,
+      jsonEncode(scoutingDataList),
+    );
+    await prefs.setString(
+      _cacheMatchEntriesKey,
+      jsonEncode(matchDataList),
+    );
+  }
+
+  Future<void> _clearCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [
+      _cacheEventsListKey,
+      _cacheEventNameToKeyKey,
+      _cacheTeamsListKey,
+      _cacheSelectedEventKey,
+      _cachePitTemplateKey,
+      _cacheDatasheetsKey,
+      _cacheAboutProfileKey,
+      _cacheMatchesStatusKey,
+      _cachePitEntriesKey,
+      _cacheMatchEntriesKey,
+      _cacheTeamNamesKey,
+    ]) {
+      await prefs.remove(key);
+    }
   }
 
   Future<void> _refreshCurrentUser() async {
@@ -278,6 +473,23 @@ class Functions {
     final error = body['error'];
     if (error is Map<String, dynamic>) {
       final message = error['message'];
+      final details = error['details'];
+
+      if (details is Map<String, dynamic>) {
+        final fieldErrors = details['fieldErrors'];
+        if (fieldErrors is Map<String, dynamic> && fieldErrors.isNotEmpty) {
+          final parts = fieldErrors.entries.map((e) {
+            final msgs = e.value;
+            final first = msgs is List && msgs.isNotEmpty ? '${msgs.first}' : '';
+            return '${e.key}: $first';
+          }).join(', ');
+          if (message is String && message.isNotEmpty) {
+            return '$message — $parts';
+          }
+          return parts;
+        }
+      }
+
       if (message is String && message.isNotEmpty) {
         return message;
       }
@@ -337,11 +549,31 @@ class Functions {
     await prefs.setStringList(key, encoded);
   }
 
+  /// Returns a signature for dedup: payload without timestamps/queue metadata.
+  String _offlineEntrySignature(Map<String, dynamic> entry) {
+    final cleaned = Map<String, dynamic>.from(entry)
+      ..remove('queuedAt')
+      ..remove('offlineOnly')
+      ..remove('scoutedAt');
+    final keys = cleaned.keys.toList()..sort();
+    final buf = StringBuffer();
+    for (final k in keys) {
+      buf.write('$k=${cleaned[k]};');
+    }
+    return buf.toString();
+  }
+
   Future<void> _enqueueOfflineEntry(
     String key,
     Map<String, dynamic> payload,
   ) async {
     final queue = await _readOfflineQueue(key);
+
+    // Prevent duplicate entries with identical content.
+    final newSig = _offlineEntrySignature(payload);
+    final isDuplicate = queue.any((e) => _offlineEntrySignature(e) == newSig);
+    if (isDuplicate) return;
+
     queue.add({...payload, 'queuedAt': DateTime.now().toIso8601String()});
     if (queue.length > 300) {
       queue.removeRange(0, queue.length - 300);
@@ -485,8 +717,18 @@ class Functions {
         throw Exception('Student signup requires a 64-character invite code.');
       }
 
+      final loginTeamNumber = loginInputs[2].trim();
+
+      if (isLoginMode && loginTeamNumber.isEmpty) {
+        throw Exception('Enter username@team_number to login.');
+      }
+
       final payload = isLoginMode
-          ? {'username': username, 'password': password}
+          ? {
+              'username': username,
+              'password': password,
+              'teamNumber': loginTeamNumber,
+            }
           : {
               'username': username,
               'teamNumber': signupTeamNumber,
@@ -528,7 +770,11 @@ class Functions {
     }
   }
 
-  Future<void> loginWithPasskey(BuildContext context, String username) async {
+  Future<void> loginWithPasskey(
+    BuildContext context,
+    String username,
+    String teamNumber,
+  ) async {
     loginOutputs[0] = true;
     loginOutputs[1] = '';
 
@@ -539,14 +785,17 @@ class Functions {
         throw Exception('Passkeys are disabled on this server.');
       }
 
-      if (username.trim().isEmpty) {
-        throw Exception('Enter your username for passkey login.');
+      if (username.trim().isEmpty || teamNumber.trim().isEmpty) {
+        throw Exception('Enter username@team_number for passkey login.');
       }
 
       final optionsResponse = await _request(
         method: 'POST',
         path: '/auth/passkeys/login/options',
-        body: {'username': username.trim()},
+        body: {
+          'username': username.trim(),
+          'teamNumber': teamNumber.trim(),
+        },
       );
 
       final options = Map<String, dynamic>.from(
@@ -558,7 +807,11 @@ class Functions {
       final verifyResponse = await _request(
         method: 'POST',
         path: '/auth/passkeys/login/verify',
-        body: {'username': username.trim(), 'response': credentialResponse},
+        body: {
+          'username': username.trim(),
+          'teamNumber': teamNumber.trim(),
+          'response': credentialResponse,
+        },
       );
 
       _applyAuthenticatedState(verifyResponse);
@@ -677,6 +930,7 @@ class Functions {
     ];
 
     unawaited(_clearSession());
+    unawaited(_clearCache());
   }
 
   Future<void> fetchMainEventsFromTba({int? year}) async {
@@ -707,19 +961,20 @@ class Functions {
 
     if (loadedNames.isEmpty) {
       eventsList = ['No Events Available'];
-      teamsList = [
-        [0, 0, 0, 0, 0, 0],
-      ];
+      teamsList = [];
+      _matchesStatusMessage = 'No events available for the selected team/year.';
       _selectedEventKey = null;
       return;
     }
 
     eventsList = loadedNames;
+    _matchesStatusMessage = '';
     _selectedEventKey ??= _eventNameToKey[loadedNames.first];
 
     if (_selectedEventKey != null) {
       await _fetchMatchesForEventKey(_selectedEventKey!);
     }
+    unawaited(_persistEventsCache());
   }
 
   Future<void> updateMatches(String eventName) async {
@@ -733,13 +988,19 @@ class Functions {
   }
 
   Future<void> fetchMatchesByEventKey(String eventKey) async {
-    final normalized = eventKey.trim().toLowerCase();
+    final normalized = _normalizeEventKeyInput(eventKey);
     if (normalized.isEmpty) {
       throw Exception('Event key is required.');
     }
 
-    _selectedEventKey = normalized;
+    final event = await _request(method: 'GET', path: '/tba/event/$normalized');
+    final eventData = event['event'] as Map<String, dynamic>? ?? {};
+    final eventName = '${eventData['name'] ?? ''}'.trim();
+
     await _fetchMatchesForEventKey(normalized);
+
+    _selectedEventKey = normalized;
+    _upsertLoadedEvent(normalized, eventName);
   }
 
   Future<void> _fetchMatchesForEventKey(String eventKey) async {
@@ -750,9 +1011,9 @@ class Functions {
 
     final matches = response['matches'] as List<dynamic>? ?? [];
     if (matches.isEmpty) {
-      teamsList = [
-        [0, 0, 0, 0, 0, 0],
-      ];
+      teamsList = [];
+      _matchesStatusMessage =
+          'No matches are currently published in TBA for $eventKey.';
       return;
     }
 
@@ -773,11 +1034,62 @@ class Functions {
       loadedTeams.add(parsedTeams);
     }
 
-    teamsList = loadedTeams.isEmpty
-        ? [
-            [0, 0, 0, 0, 0, 0],
-          ]
-        : loadedTeams;
+    teamsList = loadedTeams.isEmpty ? [] : loadedTeams;
+    _matchesStatusMessage = teamsList.isEmpty
+        ? 'No match schedule could be parsed for $eventKey.'
+        : '';
+    unawaited(_persistEventsCache());
+  }
+
+  String _normalizeEventKeyInput(String input) {
+    final raw = input.trim();
+    if (raw.isEmpty) return '';
+
+    var normalized = raw.toLowerCase();
+
+    final uri = Uri.tryParse(raw);
+    if (uri != null && uri.hasScheme && uri.pathSegments.isNotEmpty) {
+      final segments = uri.pathSegments
+          .where((segment) => segment.trim().isNotEmpty)
+          .toList();
+      final eventSegmentIndex = segments.indexOf('event');
+      if (eventSegmentIndex != -1 && eventSegmentIndex + 1 < segments.length) {
+        normalized = segments[eventSegmentIndex + 1].toLowerCase();
+      } else {
+        normalized = segments.last.toLowerCase();
+      }
+    }
+
+    normalized = normalized.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return normalized;
+  }
+
+  void _upsertLoadedEvent(String eventKey, String eventName) {
+    final resolvedName = eventName.isEmpty ? eventKey.toUpperCase() : eventName;
+
+    final duplicateNames = _eventNameToKey.entries
+        .where((entry) => entry.value == eventKey && entry.key != resolvedName)
+        .map((entry) => entry.key)
+        .toList();
+    for (final name in duplicateNames) {
+      _eventNameToKey.remove(name);
+    }
+
+    _eventNameToKey[resolvedName] = eventKey;
+
+    final updatedEvents = <String>[resolvedName];
+    for (final existing in eventsList) {
+      if (existing == 'No Events Available' || existing == resolvedName) {
+        continue;
+      }
+      final mappedKey = _eventNameToKey[existing];
+      if (mappedKey == eventKey) {
+        continue;
+      }
+      updatedEvents.add(existing);
+    }
+
+    eventsList = updatedEvents;
   }
 
   Future<void> fetchPitTemplate() async {
@@ -796,6 +1108,9 @@ class Functions {
     pitTemplateFields = (template['fields'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .toList();
+    unawaited(SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_cachePitTemplateKey, jsonEncode(pitTemplateFields)),
+    ));
   }
 
   Future<void> savePitTemplate(List<Map<String, dynamic>> fields) async {
@@ -839,12 +1154,17 @@ class Functions {
         ...payload,
         'offlineOnly': true,
       });
+      lastSubmitWasOffline = true;
       pitInputs = List.filled(7, '');
       customPitResponses = {};
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved pit data offline. Login and sync later.'),
+          SnackBar(
+            content: const Text('Saved pit data offline.'),
+            action: SnackBarAction(
+              label: 'Download CSV',
+              onPressed: () => downloadOfflineQueuesCsv(),
+            ),
           ),
         );
       }
@@ -864,6 +1184,7 @@ class Functions {
         scoutingDataList.insert(0, _normalizePitEntry(entry));
       }
 
+      lastSubmitWasOffline = false;
       pitInputs = List.filled(7, '');
       customPitResponses = {};
 
@@ -880,13 +1201,16 @@ class Functions {
           ...payload,
           'offlineOnly': true,
         });
+        lastSubmitWasOffline = true;
         pitInputs = List.filled(7, '');
         customPitResponses = {};
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Backend unreachable. Pit data saved offline for later sync.',
+            SnackBar(
+              content: const Text('Backend unreachable. Pit data saved offline.'),
+              action: SnackBarAction(
+                label: 'Download CSV',
+                onPressed: () => downloadOfflineQueuesCsv(),
               ),
             ),
           );
@@ -915,6 +1239,17 @@ class Functions {
     }
 
     try {
+      // Parse customResponses if provided as JSON string.
+      dynamic customResponses;
+      final rawCustom = updated['customResponses'];
+      if (rawCustom != null && rawCustom.isNotEmpty) {
+        try {
+          customResponses = jsonDecode(rawCustom);
+        } catch (_) {
+          customResponses = null;
+        }
+      }
+
       final response = await _request(
         method: 'PUT',
         path: '/pit-entries/$id',
@@ -929,6 +1264,7 @@ class Functions {
           'mainScoringPotential': updated['mainScoringPotential'] ?? '',
           'pointsInAutonomous': updated['pointsInAutonomous'] ?? '',
           'teleOperatedCapabilities': updated['teleOperatedCapabilities'] ?? '',
+          if (customResponses != null) 'customResponses': customResponses,
         },
       );
 
@@ -1043,6 +1379,9 @@ class Functions {
     if (datasheets.isNotEmpty && selectedDatasheetId == null) {
       selectedDatasheetId = '${datasheets.first['id']}';
     }
+    unawaited(SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_cacheDatasheetsKey, jsonEncode(datasheets)),
+    ));
   }
 
   Future<void> createDatasheet({
@@ -1094,6 +1433,7 @@ class Functions {
   Future<bool> downloadCsvFiles({
     required String pitCsv,
     required String matchCsv,
+    Rect? sharePositionOrigin,
   }) async {
     final seasonTag = (datasheets).firstWhere(
       (sheet) => '${sheet['id']}' == (selectedDatasheetId ?? ''),
@@ -1106,11 +1446,13 @@ class Functions {
       filename: 'spectator_pit_${season}_$timestamp.csv',
       content: pitCsv,
       mimeType: 'text/csv',
+      sharePositionOrigin: sharePositionOrigin,
     );
     final matchOk = await download_client.downloadTextFile(
       filename: 'spectator_match_${season}_$timestamp.csv',
       content: matchCsv,
       mimeType: 'text/csv',
+      sharePositionOrigin: sharePositionOrigin,
     );
 
     return pitOk && matchOk;
@@ -1144,6 +1486,7 @@ class Functions {
         .whereType<Map<String, dynamic>>()
         .map(_normalizePitEntry)
         .toList();
+    unawaited(_persistEntriesCache());
   }
 
   Future<void> fetchMatchEntries({
@@ -1159,6 +1502,7 @@ class Functions {
       if (includeAllTeams) 'scope': 'all',
       if ((selectedDatasheetId ?? '').isNotEmpty)
         'datasheetId': selectedDatasheetId!,
+      'limit': '150',
     };
 
     final response = await _request(
@@ -1173,6 +1517,7 @@ class Functions {
         .whereType<Map<String, dynamic>>()
         .map(_normalizeMatchEntry)
         .toList();
+    unawaited(_persistEntriesCache());
   }
 
   List<Map<String, String>> getFilteredData() {
@@ -1326,6 +1671,9 @@ class Functions {
     );
 
     aboutProfile = response['profile'] as Map<String, dynamic>? ?? {};
+    unawaited(SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_cacheAboutProfileKey, jsonEncode(aboutProfile)),
+    ));
   }
 
   Future<void> saveAboutProfile({
@@ -1552,10 +1900,15 @@ class Functions {
         ...payload,
         'offlineOnly': true,
       });
+      lastSubmitWasOffline = true;
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved match data offline. Login and sync later.'),
+          SnackBar(
+            content: const Text('Saved match data offline.'),
+            action: SnackBarAction(
+              label: 'Download CSV',
+              onPressed: () => downloadOfflineQueuesCsv(),
+            ),
           ),
         );
       }
@@ -1575,6 +1928,7 @@ class Functions {
         matchDataList.insert(0, _normalizeMatchEntry(entry));
       }
       matchScoutingData.add(List<dynamic>.from(data));
+      lastSubmitWasOffline = false;
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1592,11 +1946,14 @@ class Functions {
           ...payload,
           'offlineOnly': true,
         });
+        lastSubmitWasOffline = true;
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Backend unreachable. Match data saved offline for later sync.',
+            SnackBar(
+              content: const Text('Backend unreachable. Match data saved offline.'),
+              action: SnackBarAction(
+                label: 'Download CSV',
+                onPressed: () => downloadOfflineQueuesCsv(),
               ),
             ),
           );
@@ -1677,5 +2034,158 @@ class Functions {
       'version': '${entry['version'] ?? 1}',
       'versionCount': '$versionCount',
     };
+  }
+
+  // --------------- Offline CSV export ---------------
+
+  String _queueToCsv(List<Map<String, dynamic>> queue) {
+    if (queue.isEmpty) return '';
+
+    final allKeys = <String>{};
+    for (final entry in queue) {
+      allKeys.addAll(entry.keys.where((k) => k != 'offlineOnly'));
+    }
+    final headers = allKeys.toList()..sort();
+
+    final buffer = StringBuffer();
+    buffer.writeln(headers.join(','));
+    for (final entry in queue) {
+      buffer.writeln(
+        headers.map((h) {
+          final val = '${entry[h] ?? ''}'.replaceAll('"', '""');
+          return '"$val"';
+        }).join(','),
+      );
+    }
+    return buffer.toString();
+  }
+
+  Future<String> offlinePitQueueToCsv() async {
+    return _queueToCsv(await _readOfflineQueue(_offlinePitQueueKey));
+  }
+
+  Future<String> offlineMatchQueueToCsv() async {
+    return _queueToCsv(await _readOfflineQueue(_offlineMatchQueueKey));
+  }
+
+  Future<bool> downloadOfflineQueuesCsv({Rect? sharePositionOrigin}) async {
+    final pitCsv = await offlinePitQueueToCsv();
+    final matchCsv = await offlineMatchQueueToCsv();
+    if (pitCsv.isEmpty && matchCsv.isEmpty) return false;
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    var ok = true;
+
+    if (pitCsv.isNotEmpty) {
+      ok &= await download_client.downloadTextFile(
+        filename: 'spectator_offline_pit_$timestamp.csv',
+        content: pitCsv,
+        mimeType: 'text/csv',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    }
+    if (matchCsv.isNotEmpty) {
+      ok &= await download_client.downloadTextFile(
+        filename: 'spectator_offline_match_$timestamp.csv',
+        content: matchCsv,
+        mimeType: 'text/csv',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    }
+    return ok;
+  }
+
+  // --------------- Unified offline sync ---------------
+
+  Future<int> getTotalOfflineQueueCount() async {
+    final pit = await getOfflinePitQueueCount();
+    final match = await getOfflineMatchQueueCount();
+    return pit + match;
+  }
+
+  Future<Map<String, int>> syncAllOfflineData() async {
+    if (!isAuthenticated) {
+      throw Exception('Login required to sync offline data.');
+    }
+    final pitSent = await syncOfflinePitData();
+    final matchSent = await syncOfflineMatchData();
+    return {'pit': pitSent, 'match': matchSent};
+  }
+
+  /// Fetch and cache all data for offline use.
+  /// Returns a summary of what was saved.
+  Future<Map<String, int>> syncForOffline() async {
+    var eventCount = 0;
+    var matchCount = 0;
+    var teamNameCount = 0;
+
+    // 1. Events + matches for the current event.
+    try {
+      await fetchMainEventsFromTba();
+      eventCount = eventsList.where((e) => e != 'No Events Available').length;
+      matchCount = teamsList.length;
+    } catch (_) {}
+
+    // 2. Pit template.
+    try {
+      await fetchPitTemplate();
+    } catch (_) {}
+
+    // 3. Datasheets.
+    if (isAuthenticated) {
+      try {
+        await fetchDatasheets();
+      } catch (_) {}
+    }
+
+    // 4. Pit & match entries.
+    try {
+      await fetchPitEntries();
+    } catch (_) {}
+    try {
+      await fetchMatchEntries();
+    } catch (_) {}
+
+    // 5. About profile.
+    try {
+      await fetchAboutProfile();
+    } catch (_) {}
+
+    // 6. Fetch team names for every team appearing in cached matches.
+    final teamNumbers = <int>{};
+    for (final match in teamsList) {
+      for (final t in match) {
+        if (t != 0) teamNumbers.add(t);
+      }
+    }
+
+    for (final num in teamNumbers) {
+      if (cachedTeamNames.containsKey('$num')) continue;
+      try {
+        final info = await fetchTeamInfoFromBlueAlliance('$num');
+        final nickname = info['nickname'] ?? '';
+        if (nickname.isNotEmpty) {
+          cachedTeamNames['$num'] = nickname;
+          teamNameCount++;
+        }
+      } catch (_) {}
+    }
+
+    // Persist team names.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheTeamNamesKey, jsonEncode(cachedTeamNames));
+
+    return {
+      'events': eventCount,
+      'matches': matchCount,
+      'teamNames': cachedTeamNames.length,
+      'newTeamNames': teamNameCount,
+    };
+  }
+
+  /// Look up a team name from cache (no network call).
+  String? getCachedTeamName(String teamNumber) {
+    final normalized = teamNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    return cachedTeamNames[normalized];
   }
 }

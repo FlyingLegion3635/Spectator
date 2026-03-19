@@ -13,6 +13,7 @@ async function createMatchEntry(payload, user) {
     scoutedAt: payload.scoutedAt || new Date().toISOString(),
     createdByUserId: user.userId,
     createdByUsername: user.username,
+    submittedByTeamNumber: String(user.teamNumber || '').trim(),
     createdAt: FieldValue.serverTimestamp(),
     version: 1,
     versions: [],
@@ -49,6 +50,7 @@ async function listMatchEntries({
   eventId,
   datasheetId,
   teamNumber,
+  submittedByTeamNumber,
   matchNumber,
   limit = 50,
 }) {
@@ -60,6 +62,10 @@ async function listMatchEntries({
 
   if (teamNumber) {
     query = query.where('teamNumber', '==', teamNumber);
+  }
+
+  if (submittedByTeamNumber) {
+    query = query.where('submittedByTeamNumber', '==', submittedByTeamNumber);
   }
 
   if (datasheetId) {

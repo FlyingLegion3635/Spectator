@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
 
 class LoginPage extends StatefulWidget {
@@ -57,28 +56,75 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     SizedBox(height: measurements.largePadding),
-                    TextFormField(
-                      style: TextStyle(color: colors.baseColors[2]),
-                      decoration: _inputDecoration(
-                        'Name (Username)',
-                        Icons.person,
+                    if (isLogin) ...[
+                      TextFormField(
+                        style: TextStyle(color: colors.baseColors[2]),
+                        decoration: _inputDecoration(
+                          'username@team_number',
+                          Icons.person,
+                        ),
+                        onChanged: (val) {
+                          final atIndex = val.lastIndexOf('@');
+                          if (atIndex > 0) {
+                            backend.loginInputs[0] =
+                                val.substring(0, atIndex);
+                            backend.loginInputs[2] =
+                                val.substring(atIndex + 1);
+                          } else {
+                            backend.loginInputs[0] = val;
+                            backend.loginInputs[2] = '';
+                          }
+                        },
+                        validator: (val) {
+                          if (val == null || val.isEmpty) {
+                            return 'Enter username@team_number';
+                          }
+                          final atIndex = val.lastIndexOf('@');
+                          if (atIndex <= 0 ||
+                              atIndex == val.length - 1) {
+                            return 'Format: username@team_number';
+                          }
+                          return null;
+                        },
                       ),
-                      onChanged: (val) => backend.loginInputs[0] = val,
-                      validator: (val) => val!.isEmpty ? 'Enter name' : null,
-                    ),
-                    SizedBox(height: measurements.mediumPadding),
-                    TextFormField(
-                      obscureText: true,
-                      style: TextStyle(color: colors.baseColors[2]),
-                      decoration: _inputDecoration('Password', Icons.lock),
-                      onChanged: (val) => backend.loginInputs[1] = val,
-                      validator: (val) =>
-                          val!.length < 6 ? '6+ chars required' : null,
-                    ),
-                    if (!isLogin) ...[
+                      SizedBox(height: measurements.mediumPadding),
+                      TextFormField(
+                        obscureText: true,
+                        style: TextStyle(color: colors.baseColors[2]),
+                        decoration: _inputDecoration(
+                          'Password',
+                          Icons.lock,
+                        ),
+                        onChanged: (val) => backend.loginInputs[1] = val,
+                        validator: (val) =>
+                            val!.length < 6 ? '6+ chars required' : null,
+                      ),
+                    ] else ...[
+                      TextFormField(
+                        style: TextStyle(color: colors.baseColors[2]),
+                        decoration: _inputDecoration(
+                          'Username',
+                          Icons.person,
+                        ),
+                        onChanged: (val) => backend.loginInputs[0] = val,
+                        validator: (val) =>
+                            val!.isEmpty ? 'Enter username' : null,
+                      ),
+                      SizedBox(height: measurements.mediumPadding),
+                      TextFormField(
+                        obscureText: true,
+                        style: TextStyle(color: colors.baseColors[2]),
+                        decoration: _inputDecoration(
+                          'Password',
+                          Icons.lock,
+                        ),
+                        onChanged: (val) => backend.loginInputs[1] = val,
+                        validator: (val) =>
+                            val!.length < 6 ? '6+ chars required' : null,
+                      ),
                       SizedBox(height: measurements.mediumPadding),
                       DropdownButtonFormField<String>(
-                        initialValue: backend.signupRole,
+                        value: backend.signupRole,
                         decoration: _inputDecoration(
                           'Signup Role',
                           Icons.badge,
@@ -108,7 +154,6 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         onChanged: (val) => backend.loginInputs[2] = val,
                         validator: (val) {
-                          if (isLogin) return null;
                           return (val == null || val.trim().isEmpty)
                               ? 'Team number required'
                               : null;
@@ -121,7 +166,6 @@ class _LoginPageState extends State<LoginPage> {
                         keyboardType: TextInputType.emailAddress,
                         onChanged: (val) => backend.loginInputs[3] = val,
                         validator: (val) {
-                          if (isLogin) return null;
                           final email = (val ?? '').trim();
                           if (email.isEmpty) return 'Email required';
                           if (!email.contains('@')) return 'Enter valid email';
@@ -138,7 +182,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           onChanged: (val) => backend.loginInputs[4] = val,
                           validator: (val) {
-                            if (isLogin || backend.signupRole != 'student') {
+                            if (backend.signupRole != 'student') {
                               return null;
                             }
                             return (val == null || val.trim().length != 64)
@@ -178,7 +222,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                       ),
                     ),
-                    if (kIsWeb && backend.passkeysEnabled && isLogin) ...[
+                    if (backend.passkeysEnabled && isLogin) ...[
                       SizedBox(height: measurements.mediumPadding),
                       SizedBox(
                         height: measurements.clickHeight,
@@ -192,6 +236,7 @@ class _LoginPageState extends State<LoginPage> {
                                   await backend.loginWithPasskey(
                                     context,
                                     backend.loginInputs[0],
+                                    backend.loginInputs[2],
                                   );
                                   if (!mounted) return;
                                   setState(() {});

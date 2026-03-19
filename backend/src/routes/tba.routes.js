@@ -3,6 +3,7 @@ const {
   getTeamInfo,
   getTeamLogo,
   getTeamEvents,
+  getEventInfo,
   getEventMatches,
   getTranslatedKeys,
 } = require('../controllers/tba.controller');
@@ -23,6 +24,7 @@ router.get(
   validate(teamAndYearParamSchema, 'params'),
   getTeamEvents,
 );
+router.get('/event/:eventKey', validate(eventKeyParamSchema, 'params'), getEventInfo);
 router.get('/event/:eventKey/matches', validate(eventKeyParamSchema, 'params'), getEventMatches);
 router.get('/translate', validate(translateQuerySchema, 'query'), getTranslatedKeys);
 

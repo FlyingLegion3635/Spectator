@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
 
 class PitScouting extends StatefulWidget {
@@ -25,8 +26,11 @@ class _PitScoutingState extends State<PitScouting> {
   final Map<String, dynamic> _customValues = {};
 
   bool _templateLoading = true;
+  bool _submitting = false;
   bool _syncingOffline = false;
   int _offlinePendingCount = 0;
+  bool _fetchingTeamName = false;
+  Timer? _teamNumberDebounce;
 
   @override
   void initState() {
@@ -37,6 +41,7 @@ class _PitScoutingState extends State<PitScouting> {
 
   @override
   void dispose() {
+    _teamNumberDebounce?.cancel();
     for (final c in _controllers) {
       c.dispose();
     }
@@ -46,36 +51,70 @@ class _PitScoutingState extends State<PitScouting> {
     super.dispose();
   }
 
+  void _onTeamNumberChanged(String value) {
+    backend.pitInputs[0] = value;
+    _teamNumberDebounce?.cancel();
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 2) return;
+
+    // Check offline cache first (instant, no network).
+    final cached = backend.getCachedTeamName(digits);
+    if (cached != null && cached.isNotEmpty) {
+      _controllers[1].text = cached;
+      backend.pitInputs[1] = cached;
+      return;
+    }
+
+    _teamNumberDebounce = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      setState(() => _fetchingTeamName = true);
+      try {
+        final info = await backend.fetchTeamInfoFromBlueAlliance(digits);
+        final nickname = info['nickname'] ?? '';
+        if (nickname.isNotEmpty && mounted) {
+          _controllers[1].text = nickname;
+          backend.pitInputs[1] = nickname;
+        }
+      } catch (_) {
+        // Team not found — leave name field as-is.
+      } finally {
+        if (mounted) setState(() => _fetchingTeamName = false);
+      }
+    });
+  }
+
   Future<void> _loadTemplate() async {
     setState(() {
       _templateLoading = true;
     });
 
+    await backend.ready;
+
     try {
       await backend.fetchPitTemplate();
-
-      for (final field in backend.pitTemplateFields) {
-        final key = '${field['key'] ?? ''}'.trim();
-        if (key.isEmpty) continue;
-
-        final type = '${field['type'] ?? 'text'}';
-        if (type == 'text') {
-          _customTextControllers.putIfAbsent(
-            key,
-            () => TextEditingController(text: '${_customValues[key] ?? ''}'),
-          );
-        } else if (type == 'checkbox') {
-          _customValues.putIfAbsent(key, () => false);
-        }
-      }
     } catch (_) {
-      // Pit page still works with default fields.
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _templateLoading = false;
-      });
+      // Offline — cached pitTemplateFields from _restoreCache still usable.
     }
+
+    for (final field in backend.pitTemplateFields) {
+      final key = '${field['key'] ?? ''}'.trim();
+      if (key.isEmpty) continue;
+
+      final type = '${field['type'] ?? 'text'}';
+      if (type == 'text') {
+        _customTextControllers.putIfAbsent(
+          key,
+          () => TextEditingController(text: '${_customValues[key] ?? ''}'),
+        );
+      } else if (type == 'checkbox') {
+        _customValues.putIfAbsent(key, () => false);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _templateLoading = false;
+    });
   }
 
   Future<void> _refreshOfflineCount() async {
@@ -109,6 +148,24 @@ class _PitScoutingState extends State<PitScouting> {
             .toList();
 
     void addField(String type) {
+      if (type == 'separator') {
+        editableFields.add({
+          'key': '_sep_${editableFields.length}',
+          'label': '',
+          'type': 'separator',
+          'required': false,
+        });
+        return;
+      }
+      if (type == 'title') {
+        editableFields.add({
+          'key': '_title_${editableFields.length}',
+          'label': 'Section Title',
+          'type': 'title',
+          'required': false,
+        });
+        return;
+      }
       final baseLabel = type == 'checkbox'
           ? 'New Checkbox'
           : type == 'select'
@@ -159,6 +216,18 @@ class _PitScoutingState extends State<PitScouting> {
                           ),
                           label: const Text('Add Select'),
                         ),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => addField('title')),
+                          icon: const Icon(Icons.title),
+                          label: const Text('Add Title'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => addField('separator')),
+                          icon: const Icon(Icons.horizontal_rule),
+                          label: const Text('Add Separator'),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -174,6 +243,74 @@ class _PitScoutingState extends State<PitScouting> {
                                   .map((entry) => '$entry')
                                   .where((entry) => entry.isNotEmpty)
                                   .toList();
+
+                          // Separator — just a delete button and a visual line
+                          if (type == 'separator') {
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.horizontal_rule, size: 18),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Divider(),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Remove separator',
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          editableFields.removeAt(index);
+                                        });
+                                      },
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          // Title — label field + delete button only
+                          if (type == 'title') {
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10.0),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.title, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextFormField(
+                                        initialValue:
+                                            '${field['label'] ?? ''}',
+                                        decoration: const InputDecoration(
+                                          labelText: 'Section Title',
+                                        ),
+                                        onChanged: (value) {
+                                          field['label'] = value;
+                                        },
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Remove title',
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          editableFields.removeAt(index);
+                                        });
+                                      },
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
@@ -220,61 +357,51 @@ class _PitScoutingState extends State<PitScouting> {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: DropdownButtonFormField<String>(
-                                          initialValue: type,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Type',
-                                          ),
-                                          items: const [
-                                            DropdownMenuItem(
-                                              value: 'text',
-                                              child: Text('Text'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'checkbox',
-                                              child: Text('Checkbox'),
-                                            ),
-                                            DropdownMenuItem(
-                                              value: 'select',
-                                              child: Text('Select'),
-                                            ),
-                                          ],
-                                          onChanged: (value) {
-                                            setDialogState(() {
-                                              field['type'] = value ?? 'text';
-                                              if (field['type'] != 'select') {
-                                                field['options'] = [];
-                                              } else if ((field['options']
-                                                          as List<dynamic>? ??
-                                                      [])
-                                                  .isEmpty) {
-                                                field['options'] = [
-                                                  'Option A',
-                                                  'Option B',
-                                                ];
-                                              }
-                                            });
-                                          },
-                                        ),
+                                  DropdownButtonFormField<String>(
+                                    value: type,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Type',
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'text',
+                                        child: Text('Text'),
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: CheckboxListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          title: const Text('Required'),
-                                          value: field['required'] == true,
-                                          onChanged: (value) {
-                                            setDialogState(() {
-                                              field['required'] =
-                                                  value ?? false;
-                                            });
-                                          },
-                                        ),
+                                      DropdownMenuItem(
+                                        value: 'checkbox',
+                                        child: Text('Checkbox'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'select',
+                                        child: Text('Select'),
                                       ),
                                     ],
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        field['type'] = value ?? 'text';
+                                        if (field['type'] != 'select') {
+                                          field['options'] = [];
+                                        } else if ((field['options']
+                                                    as List<dynamic>? ??
+                                                [])
+                                            .isEmpty) {
+                                          field['options'] = [
+                                            'Option A',
+                                            'Option B',
+                                          ];
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  CheckboxListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text('Required'),
+                                    value: field['required'] == true,
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        field['required'] = value ?? false;
+                                      });
+                                    },
                                   ),
                                   if (type == 'select')
                                     TextFormField(
@@ -331,6 +458,28 @@ class _PitScoutingState extends State<PitScouting> {
             .where((entry) => entry.isNotEmpty)
             .toList();
 
+        if (type == 'separator') {
+          fields.add({
+            'key': '_sep_${fields.length}',
+            'label': '',
+            'type': 'separator',
+            'required': false,
+          });
+          continue;
+        }
+        if (type == 'title') {
+          if (label.isEmpty) {
+            throw Exception('Title sections need a label.');
+          }
+          fields.add({
+            'key': '_title_${fields.length}',
+            'label': label,
+            'type': 'title',
+            'required': false,
+          });
+          continue;
+        }
+
         if (label.isEmpty || key.isEmpty) {
           throw Exception('Each custom field needs both label and key.');
         }
@@ -369,38 +518,44 @@ class _PitScoutingState extends State<PitScouting> {
   }
 
   Future<void> _submit() async {
-    for (int i = 0; i < 2; i++) {
-      backend.pitInputs[i] = _controllers[i].text;
-    }
-    for (int i = 2; i < backend.pitInputs.length; i++) {
-      backend.pitInputs[i] = '';
-    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
 
-    for (final field in backend.pitTemplateFields) {
-      final key = '${field['key'] ?? ''}'.trim();
-      if (key.isEmpty) continue;
-
-      final type = '${field['type'] ?? 'text'}';
-      if (type == 'text') {
-        _customValues[key] = _customTextControllers[key]?.text ?? '';
+    try {
+      for (int i = 0; i < 2; i++) {
+        backend.pitInputs[i] = _controllers[i].text;
       }
-    }
-
-    backend.customPitResponses = Map<String, dynamic>.from(_customValues);
-
-    final success = await backend.submitPitData(context);
-
-    if (success && backend.pitInputs[0] == '') {
-      for (final c in _controllers) {
-        c.clear();
+      for (int i = 2; i < backend.pitInputs.length; i++) {
+        backend.pitInputs[i] = '';
       }
-      for (final c in _customTextControllers.values) {
-        c.clear();
+
+      for (final field in backend.pitTemplateFields) {
+        final key = '${field['key'] ?? ''}'.trim();
+        if (key.isEmpty) continue;
+
+        final type = '${field['type'] ?? 'text'}';
+        if (type == 'text') {
+          _customValues[key] = _customTextControllers[key]?.text ?? '';
+        }
       }
-      _customValues.clear();
-      setState(() {});
+
+      backend.customPitResponses = Map<String, dynamic>.from(_customValues);
+
+      final success = await backend.submitPitData(context);
+
+      if (success && backend.pitInputs[0] == '') {
+        for (final c in _controllers) {
+          c.clear();
+        }
+        for (final c in _customTextControllers.values) {
+          c.clear();
+        }
+        _customValues.clear();
+      }
+      await _refreshOfflineCount();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
-    await _refreshOfflineCount();
   }
 
   Future<void> _syncOfflinePitQueue() async {
@@ -442,8 +597,6 @@ class _PitScoutingState extends State<PitScouting> {
       760.0,
     );
 
-    final labels = ['Team Number', 'Team Name'];
-
     return SingleChildScrollView(
       child: Container(
         color: colors.baseColors[4],
@@ -464,8 +617,26 @@ class _PitScoutingState extends State<PitScouting> {
                     ),
                   ),
                 ),
-              for (int i = 0; i < 2; i++)
-                _buildTextField(contentWidth, labels[i], _controllers[i], i),
+              _buildTextField(
+                contentWidth,
+                'Team Number',
+                _controllers[0],
+                0,
+                onChanged: _onTeamNumberChanged,
+              ),
+              _buildTextField(
+                contentWidth,
+                'Team Name',
+                _controllers[1],
+                1,
+                suffixWidget: _fetchingTeamName
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+              ),
               SizedBox(height: measurements.mediumPadding),
               if (_templateLoading)
                 const CircularProgressIndicator()
@@ -482,8 +653,14 @@ class _PitScoutingState extends State<PitScouting> {
                     backgroundColor: colors.mainColors[0],
                     foregroundColor: colors.accentColors[0],
                   ),
-                  onPressed: _submit,
-                  child: const Text('Submit', style: TextStyle(fontSize: 18)),
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Submit', style: TextStyle(fontSize: 18)),
                 ),
               ),
               SizedBox(height: measurements.mediumPadding),
@@ -515,6 +692,36 @@ class _PitScoutingState extends State<PitScouting> {
     final key = '${field['key'] ?? ''}'.trim();
     final label = '${field['label'] ?? key}';
     final type = '${field['type'] ?? 'text'}';
+
+    if (type == 'separator') {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: measurements.mediumPadding),
+        child: SizedBox(
+          width: width,
+          child: const Divider(thickness: 1),
+        ),
+      );
+    }
+
+    if (type == 'title') {
+      return Padding(
+        padding: EdgeInsets.only(
+          top: measurements.largePadding,
+          bottom: measurements.smallPadding,
+        ),
+        child: SizedBox(
+          width: width,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: colors.baseColors[2],
+            ),
+          ),
+        ),
+      );
+    }
 
     if (key.isEmpty) {
       return const SizedBox.shrink();
@@ -594,6 +801,8 @@ class _PitScoutingState extends State<PitScouting> {
     TextEditingController controller,
     int index, {
     String? customKey,
+    void Function(String)? onChanged,
+    Widget? suffixWidget,
   }) {
     return Column(
       children: [
@@ -601,17 +810,24 @@ class _PitScoutingState extends State<PitScouting> {
           width: width,
           child: TextField(
             controller: controller,
-            onChanged: (val) {
-              if (index >= 0) {
-                backend.pitInputs[index] = val;
-              } else if (customKey != null) {
-                _customValues[customKey] = val;
-              }
-            },
+            onChanged: onChanged ??
+                (val) {
+                  if (index >= 0) {
+                    backend.pitInputs[index] = val;
+                  } else if (customKey != null) {
+                    _customValues[customKey] = val;
+                  }
+                },
             style: TextStyle(color: colors.baseColors[2]),
             decoration: InputDecoration(
               labelText: label,
               labelStyle: TextStyle(color: colors.baseColors[0]),
+              suffixIcon: suffixWidget != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: suffixWidget,
+                    )
+                  : null,
               enabledBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: colors.mainColors[2]),
               ),

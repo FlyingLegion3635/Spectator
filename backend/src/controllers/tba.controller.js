@@ -3,6 +3,7 @@ const {
   fetchTeamInfo,
   fetchTeamLogo,
   fetchTeamEvents,
+  fetchEventInfo,
   fetchEventMatches,
   translateKeys,
 } = require('../services/tba.service');
@@ -22,6 +23,11 @@ const getTeamEvents = asyncHandler(async (req, res) => {
   res.json({ success: true, events });
 });
 
+const getEventInfo = asyncHandler(async (req, res) => {
+  const event = await fetchEventInfo(req.params.eventKey);
+  res.json({ success: true, event });
+});
+
 const getEventMatches = asyncHandler(async (req, res) => {
   const matches = await fetchEventMatches(req.params.eventKey);
   res.json({ success: true, matches });
@@ -36,6 +42,7 @@ module.exports = {
   getTeamInfo,
   getTeamLogo,
   getTeamEvents,
+  getEventInfo,
   getEventMatches,
   getTranslatedKeys,
 };

@@ -5,3 +5,9 @@ This is the Official Flying Legion scouting app. The front end should be done, j
 flutter run --dart-define=SPECTATOR_API_BASE_URL=http://localhost:4000/api/v1
 cd backend && npm run dev
 ```
+```bash
+flutter run \
+  --dart-define=SPECTATOR_API_BASE_URL=http://localhost:4000/api/v1 \
+  -d web-server \
+  --web-port=8443
+```

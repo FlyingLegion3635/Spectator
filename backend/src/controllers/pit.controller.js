@@ -51,7 +51,14 @@ async function filterVisibleEntries(entries, requesterTeamNumber) {
       return false;
     }
 
+    // Always include entries about the requester's own team.
     if (requesterTeam && teamNumber === requesterTeam) {
+      return true;
+    }
+
+    // Always include entries submitted BY the requester's team.
+    const submittedBy = String(entry.submittedByTeamNumber || '').trim();
+    if (requesterTeam && submittedBy === requesterTeam) {
       return true;
     }
 
@@ -76,11 +83,27 @@ const getPitEntries = asyncHandler(async (req, res) => {
     return;
   }
 
+  let entries;
   if (req.user && !includeAllTeams) {
-    query.teamNumber = String(req.user.teamNumber || '').trim();
+    const requesterTeam = String(req.user.teamNumber || '').trim();
+    // Two queries: entries ABOUT my team + entries SUBMITTED BY my team
+    const [aboutMyTeam, submittedByMyTeam] = await Promise.all([
+      listPitEntries({ ...query, teamNumber: requesterTeam }),
+      listPitEntries({ ...query, submittedByTeamNumber: requesterTeam }),
+    ]);
+    // Merge and deduplicate by entry id
+    const seen = new Set();
+    entries = [];
+    for (const entry of [...aboutMyTeam, ...submittedByMyTeam]) {
+      if (!seen.has(entry.id)) {
+        seen.add(entry.id);
+        entries.push(entry);
+      }
+    }
+  } else {
+    entries = await listPitEntries(query);
   }
 
-  const entries = await listPitEntries(query);
   const visibleEntries = await filterVisibleEntries(entries, req.user?.teamNumber);
   res.json({ success: true, entries: visibleEntries });
 });

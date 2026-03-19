@@ -15,6 +15,10 @@ function normalizeTeamKey(teamNumberOrKey) {
   return normalized ? `frc${normalized}` : '';
 }
 
+function normalizeEventKey(eventKey) {
+  return String(eventKey || '').trim().toLowerCase();
+}
+
 function assertTbaConfigured() {
   if (!env.TBA_API_KEY) {
     throw new ApiError(
@@ -138,13 +142,47 @@ async function fetchTeamEvents(teamNumber, year) {
   }));
 }
 
+async function fetchEventInfo(eventKey) {
+  const normalized = normalizeEventKey(eventKey);
+  if (!normalized) {
+    throw new ApiError(400, 'Invalid event key');
+  }
+
+  const event = await fetchTba(`/event/${normalized}/simple`);
+
+  return {
+    key: event.key || normalized,
+    name: event.name || normalized.toUpperCase(),
+    shortName: event.short_name || '',
+    eventCode: event.event_code || '',
+    districtKey: event.district?.key || '',
+    city: event.city || '',
+    stateProv: event.state_prov || '',
+    country: event.country || '',
+    startDate: event.start_date || '',
+    endDate: event.end_date || '',
+  };
+}
+
 function normalizeAllianceTeams(alliances, allianceName) {
   const teams = alliances?.[allianceName]?.team_keys || [];
   return teams.map((teamKey) => Number(String(teamKey).replace('frc', '')) || 0);
 }
 
 async function fetchEventMatches(eventKey) {
-  const matches = await fetchTba(`/event/${eventKey}/matches/simple`);
+  const normalized = normalizeEventKey(eventKey);
+  if (!normalized) {
+    throw new ApiError(400, 'Invalid event key');
+  }
+
+  let matches = await fetchTba(`/event/${normalized}/matches/simple`);
+  if (Array.isArray(matches) && matches.length === 0) {
+    matches = await fetchTba(`/event/${normalized}/matches`);
+  }
+
+  if (!Array.isArray(matches)) {
+    return [];
+  }
 
   return matches
     .map((match) => {
@@ -215,6 +253,7 @@ module.exports = {
   fetchTeamInfo,
   fetchTeamLogo,
   fetchTeamEvents,
+  fetchEventInfo,
   fetchEventMatches,
   translateKeys,
 };

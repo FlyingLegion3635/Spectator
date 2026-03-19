@@ -13,10 +13,12 @@ const registerPasskeyVerifySchema = z.object({
 
 const loginPasskeyOptionsSchema = z.object({
   username,
+  teamNumber: z.string().trim().min(1).max(20),
 });
 
 const loginPasskeyVerifySchema = z.object({
   username,
+  teamNumber: z.string().trim().min(1).max(20),
   response: z.record(z.any()),
 });
 

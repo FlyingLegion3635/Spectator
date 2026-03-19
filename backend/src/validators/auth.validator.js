@@ -31,6 +31,7 @@ const signupSchema = z
 const loginSchema = z.object({
   username,
   password,
+  teamNumber,
 });
 
 module.exports = { signupSchema, loginSchema };

@@ -12,6 +12,7 @@ async function createPitEntry(payload, user) {
     teamName: payload.teamName.trim(),
     createdByUserId: user.userId,
     createdByUsername: user.username,
+    submittedByTeamNumber: String(user.teamNumber || '').trim(),
     createdAt: FieldValue.serverTimestamp(),
     version: 1,
     versions: [],
@@ -25,6 +26,7 @@ async function listPitEntries({
   eventId,
   datasheetId,
   teamNumber,
+  submittedByTeamNumber,
   teamName,
   limit = 50,
 }) {
@@ -40,6 +42,10 @@ async function listPitEntries({
 
   if (teamNumber) {
     query = query.where('teamNumber', '==', teamNumber);
+  }
+
+  if (submittedByTeamNumber) {
+    query = query.where('submittedByTeamNumber', '==', submittedByTeamNumber);
   }
 
   const snapshot = await query.get();

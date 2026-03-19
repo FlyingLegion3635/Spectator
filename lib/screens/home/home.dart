@@ -1,7 +1,7 @@
 import 'package:convex_bottom_bar/convex_bottom_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:spectator/something.dart';
+import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/account/account.dart';
 import 'package:spectator/screens/about_app/about_app.dart';
 import 'package:spectator/screens/home/userScreens/About.dart';
@@ -32,6 +32,9 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
   final Functions backend = Functions();
 
   int _currentIndex = 0;
+  int _offlineCount = 0;
+  bool _syncing = false;
+  bool _savingForOffline = false;
 
   @override
   void initState() {
@@ -40,6 +43,12 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       if (!mounted) return;
       context.read<SettingsModel>().syncAuthThemeState();
     });
+    _loadOfflineCount();
+  }
+
+  Future<void> _loadOfflineCount() async {
+    final count = await backend.getTotalOfflineQueueCount();
+    if (mounted) setState(() => _offlineCount = count);
   }
 
   List<_TabConfig> _visibleTabs(bool isAuthenticated) {
@@ -183,10 +192,135 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                 }
                 if (!mounted) return;
                 await settings.syncAuthThemeState();
+                await _loadOfflineCount();
                 setState(() {});
               },
             ),
+            if (_offlineCount > 0) ...[
+              const Divider(height: 18),
+              ListTile(
+                leading: _syncing
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(Icons.cloud_sync, color: drawerIconColor),
+                title: Text(
+                  'Send Offline Data ($_offlineCount)',
+                  style: TextStyle(
+                    color: drawerIconColor,
+                    fontSize: usedSettings.fontSize,
+                  ),
+                ),
+                subtitle: Text(
+                  'Sync queued pit & match entries',
+                  style: TextStyle(color: drawerMuted),
+                ),
+                onTap: _syncing
+                    ? null
+                    : () async {
+                        setState(() => _syncing = true);
+                        try {
+                          final result = await backend.syncAllOfflineData();
+                          await _loadOfflineCount();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Synced ${result['pit']} pit + ${result['match']} match entries',
+                              ),
+                            ),
+                          );
+                        } catch (error) {
+                          await _loadOfflineCount();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                error
+                                    .toString()
+                                    .replaceFirst('Exception: ', ''),
+                              ),
+                            ),
+                          );
+                        } finally {
+                          if (mounted) setState(() => _syncing = false);
+                        }
+                      },
+              ),
+              ListTile(
+                leading: Icon(Icons.download, color: drawerIconColor),
+                title: Text(
+                  'Download Offline CSV',
+                  style: TextStyle(
+                    color: drawerIconColor,
+                    fontSize: usedSettings.fontSize,
+                  ),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await backend.downloadOfflineQueuesCsv();
+                },
+              ),
+            ],
             const Divider(height: 18),
+            ListTile(
+              leading: _savingForOffline
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(Icons.offline_pin, color: drawerIconColor),
+              title: Text(
+                'Save for Offline',
+                style: TextStyle(
+                  color: drawerIconColor,
+                  fontSize: usedSettings.fontSize,
+                ),
+              ),
+              subtitle: Text(
+                'Download all data for offline scouting',
+                style: TextStyle(color: drawerMuted),
+              ),
+              onTap: _savingForOffline
+                  ? null
+                  : () async {
+                      setState(() => _savingForOffline = true);
+                      try {
+                        final result = await backend.syncForOffline();
+                        if (!mounted) return;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Saved ${result['events']} events, '
+                              '${result['matches']} matches, '
+                              '${result['teamNames']} team names',
+                            ),
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      } catch (error) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              error
+                                  .toString()
+                                  .replaceFirst('Exception: ', ''),
+                            ),
+                          ),
+                        );
+                      } finally {
+                        if (mounted) {
+                          setState(() => _savingForOffline = false);
+                        }
+                      }
+                    },
+            ),
             ListTile(
               leading: Icon(Icons.info_outline, color: drawerIconColor),
               title: Text(
@@ -254,6 +388,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
           color: navForeground.withValues(alpha: 0.7),
           activeColor: navForeground,
           style: _tabStyle,
+          height: 56,
           items: <TabItem>[
             for (final tab in tabs) TabItem(icon: tab.icon, title: tab.title),
           ],
@@ -261,6 +396,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
             setState(() {
               _currentIndex = index;
             });
+            _loadOfflineCount();
           },
         ),
       ),
