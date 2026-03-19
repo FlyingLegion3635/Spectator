@@ -20,19 +20,14 @@ class Functions {
   }
 
   static String get _apiBaseUrl {
-    const configured = String.fromEnvironment('SPECTATOR_API_BASE_URL');
-    if (configured.isNotEmpty) {
-      return configured;
-    }
+    // Set via: flutter run --dart-define=API_BASE_URL=https://example.com/api/v1
+    const configured = String.fromEnvironment('API_BASE_URL');
+    if (configured.isNotEmpty) return configured;
 
-    if (kIsWeb) {
-      return 'http://localhost:4000/api/v1';
-    }
-
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    // Platform fallbacks (development defaults)
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:4000/api/v1';
     }
-
     return 'http://localhost:4000/api/v1';
   }
 
