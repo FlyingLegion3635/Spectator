@@ -5,6 +5,7 @@ import 'package:spectator/screens/home/color.dart';
 import 'package:spectator/bridge.dart';
 import 'package:spectator/theme/appearance.dart';
 import 'package:spectator/widgets/color_picker_dialog.dart';
+import 'package:spectator/widgets/liquid_glass.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -107,50 +108,115 @@ class _AccountPageState extends State<AccountPage> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
-                  SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.system,
-                        icon: Icon(Icons.brightness_6),
-                        label: Text('System'),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode),
-                        label: Text('Light'),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode),
-                        label: Text('Dark'),
-                      ),
-                    ],
-                    selected: {settings.themeMode},
-                    onSelectionChanged: (selection) {
-                      if (selection.isEmpty) return;
-                      settings.setThemeMode(selection.first);
-                    },
-                  ),
+                  (isApplePlatform)
+                      ? GlassSurface(
+                          borderRadius: BorderRadius.circular(16),
+                          padding: const EdgeInsets.all(6),
+                          child: SegmentedButton<ThemeMode>(
+                            segments: const [
+                              ButtonSegment<ThemeMode>(
+                                value: ThemeMode.system,
+                                icon: Icon(Icons.brightness_6),
+                                label: Text('System'),
+                              ),
+                              ButtonSegment<ThemeMode>(
+                                value: ThemeMode.light,
+                                icon: Icon(Icons.light_mode),
+                                label: Text('Light'),
+                              ),
+                              ButtonSegment<ThemeMode>(
+                                value: ThemeMode.dark,
+                                icon: Icon(Icons.dark_mode),
+                                label: Text('Dark'),
+                              ),
+                            ],
+                            selected: {settings.themeMode},
+                            style: SegmentedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              selectedBackgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.7),
+                            ),
+                            onSelectionChanged: (selection) {
+                              if (selection.isEmpty) return;
+                              settings.setThemeMode(selection.first);
+                            },
+                          ),
+                        )
+                      : SegmentedButton<ThemeMode>(
+                          segments: const [
+                            ButtonSegment<ThemeMode>(
+                              value: ThemeMode.system,
+                              icon: Icon(Icons.brightness_6),
+                              label: Text('System'),
+                            ),
+                            ButtonSegment<ThemeMode>(
+                              value: ThemeMode.light,
+                              icon: Icon(Icons.light_mode),
+                              label: Text('Light'),
+                            ),
+                            ButtonSegment<ThemeMode>(
+                              value: ThemeMode.dark,
+                              icon: Icon(Icons.dark_mode),
+                              label: Text('Dark'),
+                            ),
+                          ],
+                          selected: {settings.themeMode},
+                          onSelectionChanged: (selection) {
+                            if (selection.isEmpty) return;
+                            settings.setThemeMode(selection.first);
+                          },
+                        ),
                   const SizedBox(height: 12),
-                  SegmentedButton<AppLayoutStyle>(
-                    segments: const [
-                      ButtonSegment<AppLayoutStyle>(
-                        value: AppLayoutStyle.classic,
-                        label: Text('Classic'),
-                      ),
-                      ButtonSegment<AppLayoutStyle>(
-                        value: AppLayoutStyle.simple,
-                        label: Text('Simple'),
-                      ),
-                    ],
-                    selected: {settings.layoutStyle},
-                    onSelectionChanged: (selection) {
-                      if (selection.isEmpty) return;
-                      settings.setLayoutStyle(selection.first);
-                    },
-                  ),
+                  (isApplePlatform)
+                      ? GlassSurface(
+                          borderRadius: BorderRadius.circular(16),
+                          padding: const EdgeInsets.all(6),
+                          child: SegmentedButton<AppLayoutStyle>(
+                            segments: const [
+                              ButtonSegment<AppLayoutStyle>(
+                                value: AppLayoutStyle.classic,
+                                label: Text('Classic'),
+                              ),
+                              ButtonSegment<AppLayoutStyle>(
+                                value: AppLayoutStyle.simple,
+                                label: Text('Simple'),
+                              ),
+                            ],
+                            selected: {settings.layoutStyle},
+                            style: SegmentedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              selectedBackgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.7),
+                            ),
+                            onSelectionChanged: (selection) {
+                              if (selection.isEmpty) return;
+                              settings.setLayoutStyle(selection.first);
+                            },
+                          ),
+                        )
+                      : SegmentedButton<AppLayoutStyle>(
+                          segments: const [
+                            ButtonSegment<AppLayoutStyle>(
+                              value: AppLayoutStyle.classic,
+                              label: Text('Classic'),
+                            ),
+                            ButtonSegment<AppLayoutStyle>(
+                              value: AppLayoutStyle.simple,
+                              label: Text('Simple'),
+                            ),
+                          ],
+                          selected: {settings.layoutStyle},
+                          onSelectionChanged: (selection) {
+                            if (selection.isEmpty) return;
+                            settings.setLayoutStyle(selection.first);
+                          },
+                        ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
+                  GlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Override Team Colors'),
                     subtitle: Text(

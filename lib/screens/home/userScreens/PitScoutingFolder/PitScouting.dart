@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
+import 'package:spectator/widgets/liquid_glass.dart';
 
 class PitScouting extends StatefulWidget {
   const PitScouting({super.key});
@@ -393,7 +394,7 @@ class _PitScoutingState extends State<PitScouting> {
                                       });
                                     },
                                   ),
-                                  CheckboxListTile(
+                                  GlassCheckboxListTile(
                                     contentPadding: EdgeInsets.zero,
                                     title: const Text('Required'),
                                     value: field['required'] == true,
@@ -731,7 +732,7 @@ class _PitScoutingState extends State<PitScouting> {
       final checked = (_customValues[key] as bool?) ?? false;
       return SizedBox(
         width: width,
-        child: CheckboxListTile(
+        child: GlassCheckboxListTile(
           title: Text(label, style: TextStyle(color: colors.baseColors[2])),
           value: checked,
           onChanged: (value) {

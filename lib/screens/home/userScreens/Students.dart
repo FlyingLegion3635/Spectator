@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spectator/widgets/liquid_glass.dart';
 import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
 
@@ -261,8 +262,7 @@ class _StudentsState extends State<Students> {
                   final cardColor =
                       Theme.of(context).cardTheme.color ?? colors.mainColors[2];
                   final onCard =
-                      ThemeData.estimateBrightnessForColor(cardColor) ==
-                          Brightness.dark
+                      Theme.of(context).brightness == Brightness.dark
                       ? Colors.white
                       : const Color(0xFF111827);
                   final onCardMuted = onCard.withValues(alpha: 0.75);
@@ -348,21 +348,21 @@ class _StudentsState extends State<Students> {
                             ),
                             isThreeLine: true,
                             trailing: backend.canMarkStudentTasks
-                                ? PopupMenuButton<String>(
+                                ? GlassMenuButton<String>(
                                     onSelected: (value) =>
                                         _markTask('${task['id']}', value),
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(
+                                    items: const [
+                                      GlassMenuItem(
                                         value: 'todo',
-                                        child: Text('To Do'),
+                                        label: 'To Do',
                                       ),
-                                      PopupMenuItem(
+                                      GlassMenuItem(
                                         value: 'in_progress',
-                                        child: Text('In Progress'),
+                                        label: 'In Progress',
                                       ),
-                                      PopupMenuItem(
+                                      GlassMenuItem(
                                         value: 'done',
-                                        child: Text('Done'),
+                                        label: 'Done',
                                       ),
                                     ],
                                   )

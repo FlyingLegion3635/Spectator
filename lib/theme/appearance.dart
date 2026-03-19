@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spectator/bridge.dart';
+
+bool get isApplePlatform =>
+    !kIsWeb && (Platform.isIOS || Platform.isMacOS);
 
 enum AppLayoutStyle { classic, simple }
 
@@ -305,10 +310,12 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
     final onPrimary = ThemePalette.onColor(primary);
     final onSecondary = ThemePalette.onColor(accent);
     final isSimple = _layoutStyle == AppLayoutStyle.simple;
-    final surfaceBase = brightness == Brightness.dark
+    final glass = isApplePlatform;
+    final isDark = brightness == Brightness.dark;
+    final surfaceBase = isDark
         ? (isSimple ? const Color(0xFF0F172A) : const Color(0xFF162238))
         : Colors.white;
-    final surfaceHigh = brightness == Brightness.dark
+    final surfaceHigh = isDark
         ? const Color(0xFF1C2A45)
         : const Color(0xFFE2E8F0);
 
@@ -321,10 +328,10 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
       onSecondary: onSecondary,
       surface: surfaceBase,
       surfaceContainerHighest: surfaceHigh,
-      onSurface: brightness == Brightness.dark
+      onSurface: isDark
           ? const Color(0xFFE2E8F0)
           : const Color(0xFF0F172A),
-      outline: brightness == Brightness.dark
+      outline: isDark
           ? const Color(0xFF334155)
           : const Color(0xFFCBD5E1),
     );
@@ -337,80 +344,254 @@ class SettingsModel extends ChangeNotifier with WidgetsBindingObserver {
     final appBarForeground =
         isSimple ? scheme.onSurface : onPrimary;
 
+    // --- Glass-specific colors ---
+    final glassCardColor = glass
+        ? (isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.55))
+        : null;
+    final glassBorder = glass
+        ? BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.08),
+          )
+        : null;
+    final glassDrawerBg = glass
+        ? (isDark
+            ? const Color(0xFF0F172A).withValues(alpha: 0.7)
+            : const Color(0xFFF8FAFC).withValues(alpha: 0.72))
+        : null;
+    final glassInputFill = glass
+        ? (isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.white.withValues(alpha: 0.5))
+        : null;
+    final glassDialogBg = glass
+        ? (isDark
+            ? const Color(0xFF1C2A45).withValues(alpha: 0.82)
+            : Colors.white.withValues(alpha: 0.85))
+        : null;
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
-      scaffoldBackgroundColor: brightness == Brightness.dark
+      scaffoldBackgroundColor: isDark
           ? const Color(0xFF0B1220)
           : const Color(0xFFF1F5F9),
       appBarTheme: AppBarTheme(
-        backgroundColor: appBarBackground,
+        backgroundColor: glass
+            ? appBarBackground.withValues(alpha: 0.6)
+            : appBarBackground,
         foregroundColor: appBarForeground,
-        elevation: isSimple ? 0.0 : 0.6,
-        scrolledUnderElevation: isSimple ? 0.0 : 0.8,
+        elevation: glass ? 0 : (isSimple ? 0.0 : 0.6),
+        scrolledUnderElevation: glass ? 0 : (isSimple ? 0.0 : 0.8),
         centerTitle: true,
         surfaceTintColor: Colors.transparent,
       ),
       drawerTheme: DrawerThemeData(
-        backgroundColor: isSimple
-            ? scheme.surface
-            : (brightness == Brightness.dark
-                  ? const Color(0xFF0F172A)
-                  : const Color(0xFFF8FAFC)),
+        backgroundColor: glassDrawerBg ??
+            (isSimple
+                ? scheme.surface
+                : (isDark
+                      ? const Color(0xFF0F172A)
+                      : const Color(0xFFF8FAFC))),
       ),
       cardTheme: CardThemeData(
-        elevation: isSimple ? 0 : 1.2,
-        color: isSimple ? scheme.surface : null,
+        elevation: glass ? 0 : (isSimple ? 0 : 1.2),
+        color: glassCardColor ?? (isSimple ? scheme.surface : null),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 10 : 18,
+            glass ? 16 : (isSimple ? 10 : 18),
           ),
-          side: isSimple
-              ? BorderSide(color: scheme.outline.withValues(alpha: 0.4))
-              : BorderSide.none,
+          side: glassBorder ??
+              (isSimple
+                  ? BorderSide(color: scheme.outline.withValues(alpha: 0.4))
+                  : BorderSide.none),
         ),
         surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isSimple
-            ? scheme.surface
-            : (brightness == Brightness.dark
-                  ? const Color(0xFF1E293B).withValues(alpha: 0.42)
-                  : Colors.white),
+        fillColor: glassInputFill ??
+            (isSimple
+                ? scheme.surface
+                : (isDark
+                      ? const Color(0xFF1E293B).withValues(alpha: 0.42)
+                      : Colors.white)),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : 14,
+            glass ? 12 : (isSimple ? 8 : 14),
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : 14,
+            glass ? 12 : (isSimple ? 8 : 14),
           ),
-          borderSide: BorderSide(color: scheme.outline.withValues(alpha: 0.45)),
+          borderSide: glass
+              ? BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06),
+                )
+              : BorderSide(color: scheme.outline.withValues(alpha: 0.45)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(
-            isSimple ? 8 : 14,
+            glass ? 12 : (isSimple ? 8 : 14),
           ),
           borderSide: BorderSide(color: accent, width: 2.0),
         ),
       ),
-      snackBarTheme: const SnackBarThemeData(
+      dialogTheme: glass
+          ? DialogThemeData(
+              backgroundColor: glassDialogBg,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+            )
+          : null,
+      switchTheme: glass
+          ? SwitchThemeData(
+              trackColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return primary.withValues(alpha: 0.65);
+                }
+                return isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.08);
+              }),
+              thumbColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.white;
+                }
+                return isDark
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : Colors.white;
+              }),
+              trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+                return isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.06);
+              }),
+            )
+          : null,
+      popupMenuTheme: glass
+          ? PopupMenuThemeData(
+              color: glassDialogBg,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+            )
+          : null,
+      bottomSheetTheme: glass
+          ? BottomSheetThemeData(
+              backgroundColor: glassDialogBg,
+              elevation: 0,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+            )
+          : null,
+      snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        backgroundColor: glass
+            ? (isDark
+                ? const Color(0xFF1C2A45).withValues(alpha: 0.9)
+                : Colors.white.withValues(alpha: 0.9))
+            : null,
+        shape: glass
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              )
+            : null,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: accent,
+        backgroundColor: glass
+            ? accent.withValues(alpha: 0.75)
+            : accent,
         foregroundColor: onSecondary,
+        elevation: glass ? 0 : null,
+        shape: glass
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              )
+            : null,
       ),
+      elevatedButtonTheme: glass
+          ? ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.6),
+                foregroundColor: scheme.onSurface,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                ),
+              ),
+            )
+          : null,
+      filledButtonTheme: glass
+          ? FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                backgroundColor: primary.withValues(alpha: 0.7),
+                foregroundColor: onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                ),
+              ),
+            )
+          : null,
       listTileTheme: ListTileThemeData(
         iconColor: scheme.secondary,
         textColor: scheme.onSurface,
+        shape: glass
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              )
+            : null,
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outline.withValues(alpha: isSimple ? 0.4 : 0.2),
+        color: glass
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.06))
+            : scheme.outline.withValues(alpha: isSimple ? 0.4 : 0.2),
       ),
     );
   }

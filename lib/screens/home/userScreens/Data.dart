@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:spectator/bridge.dart';
 import 'package:spectator/screens/home/color.dart';
+import 'package:spectator/widgets/liquid_glass.dart';
 
 enum _DataView { pit, match }
 
@@ -35,11 +36,23 @@ class _DataPageState extends State<DataPage> {
   final GlobalKey _exportButtonKey = GlobalKey();
 
   Color _onColor(Color background, {double alpha = 1.0}) {
-    final dark =
-        ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+    // Use overall opacity to detect translucent glass cards — fall back to
+    // the scaffold/theme brightness so text stays readable.
+    final bool dark;
+    if (background.a < 0.5) {
+      // Translucent card (glass theme): derive from scaffold brightness.
+      final ctx = _scaffoldContext;
+      dark = ctx != null && Theme.of(ctx).brightness == Brightness.dark;
+    } else {
+      dark = ThemeData.estimateBrightnessForColor(background) ==
+          Brightness.dark;
+    }
     final base = dark ? Colors.white : const Color(0xFF0F172A);
     return base.withValues(alpha: alpha);
   }
+
+  // Stored in build() so _onColor helpers can reach theme brightness.
+  BuildContext? _scaffoldContext;
 
   String _labelize(String key) {
     const overrides = <String, String>{
@@ -125,7 +138,7 @@ class _DataPageState extends State<DataPage> {
             final lower = normalized.toLowerCase();
             if (lower == 'true' || lower == 'false') {
               detailWidgets.add(
-                CheckboxListTile(
+                GlassCheckboxListTile(
                   value: lower == 'true',
                   onChanged: null,
                   title: Text(
@@ -193,7 +206,7 @@ class _DataPageState extends State<DataPage> {
       if (key == 'autoClimb') {
         final checked = value.toLowerCase() == 'true';
         detailWidgets.add(
-          CheckboxListTile(
+          GlassCheckboxListTile(
             value: checked,
             onChanged: null,
             title: Text('Auto Climb', style: TextStyle(color: titleColor)),
@@ -350,7 +363,7 @@ class _DataPageState extends State<DataPage> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SwitchListTile(
+                  GlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Make Team Data Public'),
                     subtitle: const Text(
@@ -862,7 +875,7 @@ class _DataPageState extends State<DataPage> {
 
               if (type == 'checkbox') {
                 templateWidgets.add(
-                  CheckboxListTile(
+                  GlassCheckboxListTile(
                     title: Text(label),
                     value: (customValues[key] as bool?) ?? false,
                     onChanged: (v) {
@@ -1066,7 +1079,7 @@ class _DataPageState extends State<DataPage> {
                     _field('Accuracy (0.0 - 1.0)', accuracyController),
                     _field('Calculated Points', pointsController),
                     const SizedBox(height: 10),
-                    SwitchListTile(
+                    GlassSwitchListTile(
                       value: autoClimb,
                       title: const Text('Auto Climb'),
                       onChanged: (value) {
@@ -1330,6 +1343,7 @@ class _DataPageState extends State<DataPage> {
 
   @override
   Widget build(BuildContext context) {
+    _scaffoldContext = context;
     final filteredPitEntries = backend.getFilteredData();
     final filteredMatchEntries = backend.getFilteredMatchData();
     final Map<String, String>? resolvedTeamInfo = _teamInfo;
@@ -1454,7 +1468,7 @@ class _DataPageState extends State<DataPage> {
               padding: EdgeInsets.symmetric(
                 horizontal: measurements.largePadding,
               ),
-              child: SwitchListTile(
+              child: GlassSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Search Public Team Data'),
                 subtitle: Text(

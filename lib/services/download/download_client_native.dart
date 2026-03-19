@@ -13,9 +13,13 @@ Future<bool> downloadTextFile({
   final dir = await getTemporaryDirectory();
   final file = File('${dir.path}/$filename');
   await file.writeAsString(content);
+
+  // iPad requires a non-zero sharePositionOrigin for the share popover.
+  final origin = sharePositionOrigin ?? const Rect.fromLTWH(100, 100, 200, 50);
+
   await Share.shareXFiles(
     [XFile(file.path, mimeType: mimeType, name: filename)],
-    sharePositionOrigin: sharePositionOrigin,
+    sharePositionOrigin: origin,
   );
   return true;
 }

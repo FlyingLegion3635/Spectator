@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:spectator/theme/appearance.dart';
+import 'package:spectator/widgets/liquid_glass.dart';
 import 'package:spectator/screens/home/color.dart';
 import 'package:spectator/bridge.dart';
 // Assuming color.dart is in the same directory
@@ -470,7 +472,7 @@ class _ScoutingPageState extends State<ScoutingPage> {
 
             // --- Climb / Endgame ---
             Divider(color: colors.mainColors[1]),
-            CheckboxListTile(
+            GlassCheckboxListTile(
               title: Text(
                 "Autonomous Climb?",
                 style: TextStyle(color: colors.baseColors[0], fontSize: 16),
@@ -479,7 +481,7 @@ class _ScoutingPageState extends State<ScoutingPage> {
               activeColor: colors.accentColors[0],
               checkColor: colors.baseColors[0],
               side: BorderSide(color: colors.baseColors[2]),
-              onChanged: (val) => setState(() => _autoClimb = val!),
+              onChanged: (val) => setState(() => _autoClimb = val ?? false),
             ),
             SizedBox(height: measurements.mediumPadding),
 
@@ -494,44 +496,51 @@ class _ScoutingPageState extends State<ScoutingPage> {
             SizedBox(height: measurements.smallPadding),
 
             // Segmented Control
-            Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: colors.mainColors[2],
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: colors.mainColors[1]),
-              ),
-              child: Row(
-                children: ['L1', 'L2', 'L3'].map((level) {
-                  final isSelected = _climbLevel == level;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _climbLevel = level),
-                      child: Container(
-                        margin: EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? colors.accentColors[0]
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Center(
-                          child: Text(
-                            level,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? colors.baseColors[0]
-                                  : colors.baseColors[2],
-                              fontWeight: FontWeight.bold,
+            isApplePlatform
+                ? GlassSegmentedControl<String>(
+                    value: _climbLevel,
+                    options: const ['L1', 'L2', 'L3'],
+                    onChanged: (level) => setState(() => _climbLevel = level),
+                    labelBuilder: (level) => level,
+                  )
+                : Container(
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: colors.mainColors[2],
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(color: colors.mainColors[1]),
+                    ),
+                    child: Row(
+                      children: ['L1', 'L2', 'L3'].map((level) {
+                        final isSelected = _climbLevel == level;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _climbLevel = level),
+                            child: Container(
+                              margin: EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? colors.accentColors[0]
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  level,
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? colors.baseColors[0]
+                                        : colors.baseColors[2],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
+                  ),
 
             SizedBox(height: measurements.extraLargePadding),
 

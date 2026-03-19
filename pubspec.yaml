@@ -46,6 +46,7 @@ dependencies:
   share_plus: ^10.0.0
   path_provider: ^2.1.5
   cached_network_image: ^3.4.1
+  native_glass_navbar: ^1.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
