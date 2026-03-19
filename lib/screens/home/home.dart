@@ -13,7 +13,7 @@ import 'package:spectator/screens/home/userScreens/About.dart';
 import 'package:spectator/screens/home/userScreens/Data.dart';
 import 'package:spectator/screens/home/userScreens/MainScouting.dart';
 import 'package:spectator/screens/home/userScreens/PitScoutingFolder/PitScouting.dart';
-import 'package:spectator/screens/home/userScreens/Students.dart';
+import 'package:spectator/screens/home/userScreens/Members.dart';
 import 'package:spectator/screens/login/login.dart';
 import 'package:spectator/theme/appearance.dart';
 import 'package:spectator/widgets/liquid_glass.dart';
@@ -70,11 +70,18 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       ];
     }
 
+    // Pending users can only see About (team info)
+    if (backend.isPending) {
+      return const [
+        _TabConfig('About', Icons.public, 'globe', About()),
+      ];
+    }
+
     return const [
       _TabConfig('Main', Icons.view_list, 'list.bullet', MainScouting()),
       _TabConfig('Pit', Icons.edit_attributes, 'wrench', PitScouting()),
       _TabConfig('About', Icons.public, 'globe', About()),
-      _TabConfig('Students', Icons.group, 'person.2', Students()),
+      _TabConfig('Members', Icons.group, 'person.2', Members()),
       _TabConfig('Data', Icons.analytics, 'chart.bar', DataPage()),
     ];
   }
@@ -366,7 +373,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                 onTap: onSignOut,
               ),
 
-            if (_offlineCount > 0) ...[
+            if (!backend.isPending && _offlineCount > 0) ...[
               separator(),
               sidebarRow(
                 icon: Icons.cloud_sync_rounded,
@@ -403,23 +410,25 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
               ),
             ],
 
-            separator(),
+            if (!backend.isPending) ...[
+              separator(),
 
-            sidebarRow(
-              icon: Icons.offline_pin_rounded,
-              label: 'Save for Offline',
-              leadingOverride: _savingForOffline
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: iconColor,
-                      ),
-                    )
-                  : null,
-              onTap: _savingForOffline ? null : onSaveOfflineTap,
-            ),
+              sidebarRow(
+                icon: Icons.offline_pin_rounded,
+                label: 'Save for Offline',
+                leadingOverride: _savingForOffline
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: iconColor,
+                        ),
+                      )
+                    : null,
+                onTap: _savingForOffline ? null : onSaveOfflineTap,
+              ),
+            ],
             sidebarRow(
               icon: Icons.info_outline_rounded,
               label: 'About App',
@@ -533,7 +542,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
               ),
               onTap: onAccountTap,
             ),
-            if (_offlineCount > 0) ...[
+            if (!backend.isPending && _offlineCount > 0) ...[
               const Divider(height: 18),
               ListTile(
                 leading: _syncing
@@ -580,28 +589,30 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                 ),
               ),
             ],
-            const Divider(height: 18),
-            ListTile(
-              leading: _savingForOffline
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(Icons.offline_pin, color: drawerIconColor),
-              title: Text(
-                'Save for Offline',
-                style: TextStyle(
-                  color: drawerIconColor,
-                  fontSize: usedSettings.fontSize,
+            if (!backend.isPending) ...[
+              const Divider(height: 18),
+              ListTile(
+                leading: _savingForOffline
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(Icons.offline_pin, color: drawerIconColor),
+                title: Text(
+                  'Save for Offline',
+                  style: TextStyle(
+                    color: drawerIconColor,
+                    fontSize: usedSettings.fontSize,
+                  ),
                 ),
+                subtitle: Text(
+                  'Download all data for offline scouting',
+                  style: TextStyle(color: drawerMuted),
+                ),
+                onTap: _savingForOffline ? null : onSaveOfflineTap,
               ),
-              subtitle: Text(
-                'Download all data for offline scouting',
-                style: TextStyle(color: drawerMuted),
-              ),
-              onTap: _savingForOffline ? null : onSaveOfflineTap,
-            ),
+            ],
             ListTile(
               leading: Icon(Icons.info_outline, color: drawerIconColor),
               title: Text(
@@ -710,7 +721,35 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       child: Scaffold(
         appBar: appBar,
         drawer: buildDrawer(),
-        body: tabs[_currentIndex].page,
+        body: Column(
+          children: [
+            if (isAuthenticated && backend.isPending)
+              MaterialBanner(
+                content: const Text(
+                  'Your account is awaiting approval from a team manager. '
+                  'You can view your team\'s info while you wait.',
+                ),
+                leading: const Icon(Icons.hourglass_top, color: Colors.orange),
+                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      await backend.refreshCurrentUser();
+                      if (!mounted) return;
+                      setState(() {});
+                      if (!backend.isPending) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('You have been approved!')),
+                        );
+                      }
+                    },
+                    child: const Text('Refresh'),
+                  ),
+                ],
+              ),
+            Expanded(child: tabs[_currentIndex].page),
+          ],
+        ),
         bottomNavigationBar: bottomNav,
       ),
     );

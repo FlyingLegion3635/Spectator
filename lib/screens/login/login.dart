@@ -177,16 +177,18 @@ class _LoginPageState extends State<LoginPage> {
                         TextFormField(
                           style: TextStyle(color: colors.baseColors[2]),
                           decoration: _inputDecoration(
-                            'Student Invite Code (64 chars)',
+                            'Team Invite Key (6 digits)',
                             Icons.vpn_key,
                           ),
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
                           onChanged: (val) => backend.loginInputs[4] = val,
                           validator: (val) {
                             if (backend.signupRole != 'student') {
                               return null;
                             }
-                            return (val == null || val.trim().length != 64)
-                                ? '64-char invite code required'
+                            return (val == null || val.trim().length != 6)
+                                ? '6-digit invite key required'
                                 : null;
                           },
                         ),

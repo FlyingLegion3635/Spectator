@@ -16,14 +16,14 @@ const signupSchema = z
       .enum([ROLES.TEAM_MANAGER, ROLES.SCOUTER])
       .optional()
       .default(ROLES.SCOUTER),
-    inviteCode: z.string().trim().length(64).optional(),
+    inviteCode: z.string().trim().length(6).optional(),
   })
   .refine(
     (value) =>
       value.role !== ROLES.SCOUTER ||
-      (value.inviteCode && value.inviteCode.length === 64),
+      (value.inviteCode && value.inviteCode.length === 6),
     {
-      message: 'Student signup requires a valid invite code',
+      message: 'Signup requires a valid 6-digit team invite key',
       path: ['inviteCode'],
     },
   );

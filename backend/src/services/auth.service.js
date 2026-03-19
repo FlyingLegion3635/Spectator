@@ -15,6 +15,7 @@ function toPublicUser(user) {
     ...safe,
     avatarUrl: buildAvatarUrl(safe.email),
     role: normalizeRole(safe.role),
+    status: safe.status || 'active',
   };
 }
 
@@ -79,7 +80,7 @@ async function consumeStudentInvite({ teamNumber, inviteCode }) {
     .get();
 
   if (query.empty) {
-    throw new ApiError(403, 'Invalid or already used student invite code');
+    throw new ApiError(403, 'Invalid or already used invite key');
   }
 
   const doc = query.docs[0];
@@ -95,6 +96,7 @@ function signToken(user) {
       username: user.username,
       teamNumber: user.teamNumber,
       role,
+      status: user.status || 'active',
     },
     env.JWT_SECRET,
     { expiresIn: env.JWT_EXPIRES_IN },
@@ -136,7 +138,7 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
   let studentInvite = null;
   if (normalizedRole === ROLES.SCOUTER) {
     if (!String(inviteCode || '').trim()) {
-      throw new ApiError(403, 'Student signup requires an invite code');
+      throw new ApiError(403, 'Signup requires a team invite key');
     }
 
     studentInvite = await consumeStudentInvite({
@@ -144,6 +146,9 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
       inviteCode,
     });
   }
+
+  // Team managers are active immediately; scouters require approval
+  const userStatus = normalizedRole === ROLES.TEAM_MANAGER ? 'active' : 'pending';
 
   const passwordHash = await bcrypt.hash(password, 12);
 
@@ -155,6 +160,7 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
     avatarUrl: buildAvatarUrl(email),
     teamNumber: normalizedTeam,
     role: normalizedRole,
+    status: userStatus,
     passwordHash,
     createdAt: FieldValue.serverTimestamp(),
     lastLoginAt: null,
@@ -162,12 +168,10 @@ async function createUser({ username, email, teamNumber, password, role, inviteC
 
   if (studentInvite) {
     await studentInvite.docRef.update({
-      status: 'active',
+      status: 'pending',
       linkedUserId: docRef.id,
       linkedUsername: username.trim(),
       linkedEmail: email.trim(),
-      activatedAt: FieldValue.serverTimestamp(),
-      inviteCodeHash: FieldValue.delete(),
     });
   }
 
@@ -203,7 +207,14 @@ async function loginUser({ username, password, teamNumber }) {
     throw new ApiError(401, 'Invalid username, team number, or password');
   }
 
-  await doc.ref.update({ lastLoginAt: FieldValue.serverTimestamp() });
+  // Backfill status for existing users who predate the approval system
+  const updateFields = { lastLoginAt: FieldValue.serverTimestamp() };
+  if (!user.status) {
+    updateFields.status = 'active';
+    user.status = 'active';
+  }
+
+  await doc.ref.update(updateFields);
 
   return buildAuthPayload(user);
 }

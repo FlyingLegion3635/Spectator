@@ -75,4 +75,16 @@ function requireRoles(allowedRoles) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireManager, requireRoles };
+function requireApproved(req, _res, next) {
+  if (!req.user) {
+    return next(new ApiError(401, 'Authentication required'));
+  }
+
+  if (req.user.status === 'pending') {
+    return next(new ApiError(403, 'Your account is awaiting approval from a team manager'));
+  }
+
+  return next();
+}
+
+module.exports = { requireAuth, optionalAuth, requireManager, requireRoles, requireApproved };

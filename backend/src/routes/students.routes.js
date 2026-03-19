@@ -1,7 +1,10 @@
 const { Router } = require('express');
 const {
   getStudents,
+  getMembers,
   postStudent,
+  patchApproveStudent,
+  patchRejectStudent,
   deleteStudent,
   postTask,
   patchTaskStatus,
@@ -21,12 +24,27 @@ const {
 const router = Router();
 
 router.get('/', requireAuth, validate(listStudentsQuerySchema, 'query'), getStudents);
+router.get('/members', requireAuth, validate(listStudentsQuerySchema, 'query'), getMembers);
 router.post(
   '/invite',
   requireAuth,
-  requireRoles([ROLES.TEAM_MANAGER]),
+  requireRoles([ROLES.TEAM_MANAGER, ROLES.SCOUT_MANAGER]),
   validate(createStudentSchema),
   postStudent,
+);
+router.patch(
+  '/:id/approve',
+  requireAuth,
+  requireRoles([ROLES.TEAM_MANAGER, ROLES.SCOUT_MANAGER]),
+  validate(studentIdParamSchema, 'params'),
+  patchApproveStudent,
+);
+router.patch(
+  '/:id/reject',
+  requireAuth,
+  requireRoles([ROLES.TEAM_MANAGER, ROLES.SCOUT_MANAGER]),
+  validate(studentIdParamSchema, 'params'),
+  patchRejectStudent,
 );
 router.delete(
   '/:id',

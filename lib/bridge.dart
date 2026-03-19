@@ -39,6 +39,7 @@ class Functions {
   String? _avatarUrl;
   String? _teamNumber;
   String _role = 'scouter';
+  String _status = 'active';
 
   bool _bootstrapped = false;
   final Map<String, String> _eventNameToKey = {};
@@ -48,6 +49,7 @@ class Functions {
   static const _sessionRoleKey = 'spectator.auth.role';
   static const _sessionEmailKey = 'spectator.auth.email';
   static const _sessionAvatarKey = 'spectator.auth.avatar';
+  static const _sessionStatusKey = 'spectator.auth.status';
   static const _offlinePitQueueKey = 'spectator.offline.pitQueue';
   static const _offlineMatchQueueKey = 'spectator.offline.matchQueue';
   static const _cacheEventsListKey = 'spectator.cache.eventsList';
@@ -92,15 +94,20 @@ class Functions {
   bool get isTeamManager => _role == 'team_manager';
   bool get isScoutManager => _role == 'scout_manager';
   bool get isScouter => _role == 'scouter';
+  bool get isPending => _status == 'pending';
+  bool get isApproved => !isPending;
+  String get userStatus => _status;
 
-  bool get canManagePitTemplate => isTeamManager || isScoutManager;
-  bool get canEditAbout => isTeamManager;
-  bool get canInviteStudents => isTeamManager;
-  bool get canAssignStudentTasks => isTeamManager || isScoutManager;
-  bool get canMarkStudentTasks => isAuthenticated;
-  bool get canCreateDatasheet => isTeamManager;
-  bool get canRestoreVersions => isTeamManager;
-  bool get canExportData => isTeamManager || isScoutManager;
+  bool get canManagePitTemplate => isApproved && (isTeamManager || isScoutManager);
+  bool get canEditAbout => isApproved && isTeamManager;
+  bool get canInviteMembers => isApproved && (isTeamManager || isScoutManager);
+  bool get canInviteStudents => canInviteMembers; // backwards compat
+  bool get canAssignStudentTasks => isApproved && (isTeamManager || isScoutManager);
+  bool get canApproveMembers => isApproved && (isTeamManager || isScoutManager);
+  bool get canMarkStudentTasks => isAuthenticated && isApproved;
+  bool get canCreateDatasheet => isApproved && isTeamManager;
+  bool get canRestoreVersions => isApproved && isTeamManager;
+  bool get canExportData => isApproved && (isTeamManager || isScoutManager);
 
   /// Set after submit calls — true when data was queued offline instead of sent.
   bool lastSubmitWasOffline = false;
@@ -153,7 +160,7 @@ class Functions {
       await refreshAuthConfig();
 
       if (isAuthenticated) {
-        await _refreshCurrentUser();
+        await refreshCurrentUser();
       }
 
       await fetchMainEventsFromTba();
@@ -171,6 +178,7 @@ class Functions {
     await prefs.setString(_sessionUsernameKey, _username ?? '');
     await prefs.setString(_sessionTeamNumberKey, _teamNumber ?? '');
     await prefs.setString(_sessionRoleKey, _role);
+    await prefs.setString(_sessionStatusKey, _status);
     await prefs.setString(_sessionEmailKey, _email ?? '');
     await prefs.setString(_sessionAvatarKey, _avatarUrl ?? '');
   }
@@ -181,6 +189,7 @@ class Functions {
     await prefs.remove(_sessionUsernameKey);
     await prefs.remove(_sessionTeamNumberKey);
     await prefs.remove(_sessionRoleKey);
+    await prefs.remove(_sessionStatusKey);
     await prefs.remove(_sessionEmailKey);
     await prefs.remove(_sessionAvatarKey);
   }
@@ -196,6 +205,7 @@ class Functions {
     _username = (prefs.getString(_sessionUsernameKey) ?? '').trim();
     _teamNumber = (prefs.getString(_sessionTeamNumberKey) ?? '').trim();
     _role = (prefs.getString(_sessionRoleKey) ?? 'scouter').trim();
+    _status = (prefs.getString(_sessionStatusKey) ?? 'active').trim();
     _email = (prefs.getString(_sessionEmailKey) ?? '').trim();
     _avatarUrl = (prefs.getString(_sessionAvatarKey) ?? '').trim();
     appSettings[2] = isTeamManager || isScoutManager;
@@ -361,7 +371,7 @@ class Functions {
     }
   }
 
-  Future<void> _refreshCurrentUser() async {
+  Future<void> refreshCurrentUser() async {
     if (!isAuthenticated) return;
 
     try {
@@ -374,6 +384,7 @@ class Functions {
       _username = '${user['username'] ?? _username ?? ''}'.trim();
       _teamNumber = '${user['teamNumber'] ?? _teamNumber ?? ''}'.trim();
       _role = '${user['role'] ?? _role}'.trim();
+      _status = '${user['status'] ?? _status}'.trim();
       _email = '${user['email'] ?? _email ?? ''}'.trim();
       _avatarUrl = '${user['avatarUrl'] ?? _avatarUrl ?? ''}'.trim();
       appSettings[2] = isTeamManager || isScoutManager;
@@ -708,8 +719,8 @@ class Functions {
 
       if (!isLoginMode &&
           selectedSignupRole == 'scouter' &&
-          signupInviteCode.length != 64) {
-        throw Exception('Student signup requires a 64-character invite code.');
+          signupInviteCode.length != 6) {
+        throw Exception('Signup requires a 6-digit team invite key.');
       }
 
       final loginTeamNumber = loginInputs[2].trim();
@@ -749,6 +760,7 @@ class Functions {
         fetchPitEntries(),
         fetchMatchEntries(),
         fetchStudents(),
+        fetchMembers(),
         fetchAboutProfile(),
       ]);
 
@@ -818,6 +830,7 @@ class Functions {
         fetchPitEntries(),
         fetchMatchEntries(),
         fetchStudents(),
+        fetchMembers(),
         fetchAboutProfile(),
       ]);
 
@@ -904,6 +917,7 @@ class Functions {
     _avatarUrl = null;
     _teamNumber = null;
     _role = 'scouter';
+    _status = 'active';
     _selectedEventKey = null;
 
     appSettings[2] = false;
@@ -915,6 +929,7 @@ class Functions {
 
     studentsData = [];
     studentsList = [];
+    membersData = [];
     datasheets = [];
     selectedDatasheetId = null;
     scoutingDataList = [];
@@ -1541,6 +1556,8 @@ class Functions {
     }).toList();
   }
 
+  List<Map<String, dynamic>> membersData = [];
+
   Future<void> fetchStudents() async {
     if (!isAuthenticated) {
       studentsData = [];
@@ -1564,13 +1581,30 @@ class Functions {
         .toList();
   }
 
+  Future<void> fetchMembers() async {
+    if (!isAuthenticated) {
+      membersData = [];
+      return;
+    }
+
+    final response = await _request(
+      method: 'GET',
+      path: '/students/members',
+      authenticated: true,
+    );
+
+    membersData = (response['members'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
   Future<Map<String, String>> inviteStudent({
     required String name,
     String? username,
     String? email,
   }) async {
-    if (!canInviteStudents) {
-      throw Exception('Only Team Managers can invite students.');
+    if (!canInviteMembers) {
+      throw Exception('Only managers can invite members.');
     }
 
     final response = await _request(
@@ -1585,7 +1619,7 @@ class Functions {
       },
     );
 
-    await fetchStudents();
+    await fetchMembers();
 
     return {
       'inviteCode': '${response['inviteCode'] ?? ''}',
@@ -1594,9 +1628,37 @@ class Functions {
     };
   }
 
+  Future<void> approveMember(String studentId) async {
+    if (!canApproveMembers) {
+      throw Exception('Only managers can approve members.');
+    }
+
+    await _request(
+      method: 'PATCH',
+      path: '/students/$studentId/approve',
+      authenticated: true,
+    );
+
+    await fetchMembers();
+  }
+
+  Future<void> rejectMember(String studentId) async {
+    if (!canApproveMembers) {
+      throw Exception('Only managers can reject members.');
+    }
+
+    await _request(
+      method: 'PATCH',
+      path: '/students/$studentId/reject',
+      authenticated: true,
+    );
+
+    await fetchMembers();
+  }
+
   Future<void> removeStudent(String studentId) async {
-    if (!canInviteStudents) {
-      throw Exception('Only Team Managers can remove students.');
+    if (!canInviteMembers) {
+      throw Exception('Only managers can remove members.');
     }
 
     await _request(
@@ -1605,7 +1667,7 @@ class Functions {
       authenticated: true,
     );
 
-    await fetchStudents();
+    await fetchMembers();
   }
 
   Future<void> assignStudentTask({
@@ -1629,7 +1691,7 @@ class Functions {
       },
     );
 
-    await fetchStudents();
+    await fetchMembers();
   }
 
   Future<void> markStudentTaskStatus({
@@ -1647,7 +1709,7 @@ class Functions {
       body: {'status': status},
     );
 
-    await fetchStudents();
+    await fetchMembers();
   }
 
   Future<void> fetchAboutProfile({String? teamNumber}) async {
@@ -1977,6 +2039,7 @@ class Functions {
     _avatarUrl = user['avatarUrl']?.toString();
     _teamNumber = user['teamNumber']?.toString();
     _role = (user['role']?.toString() ?? 'scouter').trim();
+    _status = (user['status']?.toString() ?? 'active').trim();
     appSettings[2] = isTeamManager || isScoutManager;
     appSettings[3] = true;
     unawaited(_persistSession());
