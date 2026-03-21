@@ -1,5 +1,4 @@
-const { FieldValue } = require('firebase-admin/firestore');
-const { db } = require('../config/firebase');
+const { db, FieldValue } = require('../database');
 const { COLLECTIONS } = require('../constants/collections');
 const { ApiError } = require('../utils/apiError');
 const { serializeDoc } = require('../utils/serialize');

@@ -1,6 +1,5 @@
-const { FieldValue } = require('firebase-admin/firestore');
+const { db, FieldValue } = require('../database');
 const crypto = require('crypto');
-const { db } = require('../config/firebase');
 const { COLLECTIONS } = require('../constants/collections');
 const { normalizeRole, ROLES } = require('../constants/roles');
 const { ApiError } = require('../utils/apiError');

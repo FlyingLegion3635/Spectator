@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 const bcrypt = require('bcryptjs');
-const { FieldValue } = require('firebase-admin/firestore');
-const { db } = require('../src/config/firebase');
+const { db, FieldValue } = require('../src/database');
 const { COLLECTIONS } = require('../src/constants/collections');
 
 async function ensureManagerUser() {
@@ -64,21 +63,21 @@ async function seedEvent(managerId) {
 
 async function seedStudents(managerId) {
   const names = ['Student 1', 'Student 2', 'Student 3'];
-  const batch = db.batch();
 
-  names.forEach((name) => {
-    const ref = db.collection(COLLECTIONS.STUDENTS).doc();
-    batch.set(ref, {
+  for (const name of names) {
+    await db.collection(COLLECTIONS.STUDENTS).add({
       name,
       createdBy: managerId,
       createdAt: FieldValue.serverTimestamp(),
     });
-  });
-
-  await batch.commit();
+  }
 }
 
 async function main() {
+  if (typeof db.initialize === 'function') {
+    await db.initialize();
+  }
+
   const managerId = await ensureManagerUser();
   const eventId = await seedEvent(managerId);
   await seedStudents(managerId);
@@ -87,6 +86,10 @@ async function main() {
   console.log('manager username: manager');
   console.log('manager password: manager123');
   console.log(`sample eventId: ${eventId}`);
+
+  if (typeof db.close === 'function') {
+    await db.close();
+  }
 }
 
 main().catch((error) => {
