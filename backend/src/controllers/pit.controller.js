@@ -1,5 +1,5 @@
 const { asyncHandler } = require('../utils/asyncHandler');
-const { db } = require('../config/firebase');
+const { db } = require('../database');
 const { COLLECTIONS } = require('../constants/collections');
 const {
   createPitEntry,

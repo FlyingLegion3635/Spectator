@@ -1,11 +1,10 @@
-const { FieldValue } = require('firebase-admin/firestore');
+const { db, FieldValue } = require('../database');
 const {
   generateRegistrationOptions,
   verifyRegistrationResponse,
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } = require('@simplewebauthn/server');
-const { db } = require('../config/firebase');
 const { env } = require('../config/env');
 const { COLLECTIONS } = require('../constants/collections');
 const { ApiError } = require('../utils/apiError');

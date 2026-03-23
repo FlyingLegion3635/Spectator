@@ -1,8 +1,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { FieldValue } = require('firebase-admin/firestore');
-const { db } = require('../config/firebase');
+const { db, FieldValue } = require('../database');
 const { env } = require('../config/env');
 const { COLLECTIONS } = require('../constants/collections');
 const { normalizeRole, ROLES } = require('../constants/roles');

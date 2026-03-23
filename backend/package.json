@@ -23,8 +23,16 @@
     "firebase-admin": "^13.0.2",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "mongodb": "^6.12.0",
     "morgan": "^1.10.0",
     "zod": "^3.24.1"
+  },
+  "optionalDependencies": {
+    "pg": "^8.13.0",
+    "mysql2": "^3.11.0",
+    "better-sqlite3": "^11.6.0",
+    "tedious": "^18.6.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
